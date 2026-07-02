@@ -4,3 +4,6 @@ node_modules/
 .DS_Store
 server.stdout.log
 server.stderr.log
+scripts/__pycache__/
+tools/XunxianDpkViewer/bin/
+tools/XunxianDpkViewer/obj/
