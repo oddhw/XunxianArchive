@@ -154,7 +154,7 @@ function getServer(title) {
 }
 
 function isXunxianOne(item) {
-  return !item.title.includes('寻仙2');
+  return !item.title.includes('寻仙2') && !item.text.includes('寻仙2');
 }
 
 function hasAny(text, words) {
