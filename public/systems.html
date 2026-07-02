@@ -35,7 +35,7 @@
       <div class="hero-grid">
         <div class="hero-copy">
           <h1>把十八年的养成脉络，<br><em>一层层理清楚。</em></h1>
-          <p>系统怎么改过、材料从哪里来，都从历年官网公告中汇总，并保留出处。</p>
+          <p>系统怎么改过、名称与属性如何演进，都从历年资料中汇总，并保留出处。</p>
         </div>
         <div class="hero-search-wrap">
           <div class="hero-search">
@@ -56,7 +56,7 @@
       <div class="hero-metrics">
         <div><strong id="systemCount">18</strong><span>套系统分类</span></div>
         <div><strong id="updateCount">—</strong><span>个已校对阶段</span></div>
-        <div><strong id="materialCount">—</strong><span>种已核对材料</span></div>
+        <div><strong id="materialCount">—</strong><span>把职业武器</span></div>
         <div class="metric-source"><span>资料跨度</span><strong>2008—2026</strong></div>
       </div>
     </section>
@@ -74,7 +74,7 @@
       <section class="system-stage">
         <div class="stage-heading">
           <div><span>GAME SYSTEMS</span><h2 id="stageTitle">全部系统</h2></div>
-          <p>选择一个系统，查看它的版本演进和材料获取方式。</p>
+          <p>选择一个系统，查看它的版本演进、名称与属性。</p>
         </div>
         <div class="system-grid" id="systemGrid" aria-live="polite"></div>
         <div class="empty-state" id="emptyState" hidden>
@@ -96,16 +96,16 @@
       <div class="drawer-title"><span id="drawerGroup"></span><h2 id="drawerName"></h2><p id="drawerDescription"></p></div>
     </div>
     <div class="drawer-stats">
-      <div><strong id="drawerStages">0</strong><span>个养成阶段</span></div>
-      <div><strong id="drawerMaterials">0</strong><span>种核心材料</span></div>
+      <div><strong id="drawerStages">0</strong><span>代武器</span></div>
+      <div><strong id="drawerMaterials">0</strong><span>把职业武器</span></div>
       <div><strong id="drawerLatest">—</strong><span>最近更新</span></div>
     </div>
     <div class="drawer-tabs" role="tablist">
-      <button class="active" id="routeTab" data-section="route" role="tab" type="button"><span>养成路线</span><small>阶段 · 用途 · 数量</small></button>
-      <button id="materialsTab" data-section="materials" role="tab" type="button"><span>材料图鉴</span><small>来源 · 首见 · 改动</small></button>
+      <button class="active" id="routeTab" data-section="route" role="tab" type="button"><span>职业武器</span><small>代际 · 职业 · 名称</small></button>
+      <button id="materialsTab" data-section="materials" role="tab" type="button"><span>属性说明</span><small>词缀 · 武魂 · 外观</small></button>
     </div>
     <div class="detail-tools">
-      <div class="detail-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg><input id="detailSearch" type="search" placeholder="查找材料名称或用途…"></div>
+      <div class="detail-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg><input id="detailSearch" type="search" placeholder="查找等级、职业或武器名…"></div>
       <span id="detailResultCount"></span>
     </div>
     <div class="detail-list" id="detailList"></div>

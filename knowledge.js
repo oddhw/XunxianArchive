@@ -1,20 +1,4 @@
 export const SYSTEM_GUIDES = {
-  weapon: {
-    stages: [
-      { id: 'obtain', name: '武器本体', description: '通过副本、世界首领或材料兑换取得对应等级武器。' },
-      { id: 'soul', name: '武魂升阶', description: '使用当前等级段强化材料提升武魂品阶。' },
-      { id: 'pattern', name: '阵纹天机', description: '提升阵纹孔洞和武器天机等级。' },
-    ],
-    materials: [
-      { name: '真昊玄金锭', stage: 'obtain', icon: 'ingot', amount: '按兑换档位', purpose: '兑换 260 级武魂武器礼包', source: '本区及跨区世界 BOSS 掉落' },
-      { name: '青玄陨铁', stage: 'obtain', icon: 'ore', amount: '100 块', purpose: '合成 1 个 170 级武魂武器礼包', source: '对应版本首领与活动产出' },
-      { name: '七星神钢锭', stage: 'obtain', icon: 'ingot', amount: '100 枚', purpose: '兑换 190 级武魂武器礼包', source: '世界 BOSS 产出' },
-      { name: '灼焱水晶', stage: 'obtain', icon: 'crystal', amount: '1,000 枚', purpose: '与七星神钢锭共同兑换 190 级礼包', source: '副本与活动奖励' },
-      { name: '天曜石', stage: 'soul', icon: 'gem', amount: '按武魂等阶', purpose: '提升高等级武器武魂品阶', source: '车迟国副本、联盟积分及活动礼包' },
-      { name: '金晶玉', stage: 'pattern', icon: 'jade', amount: '101—110 重每次 1 个；111—120 重每次 2 个', purpose: '升级武器阵纹孔洞', source: '金币集市，单价 3 砖流通金' },
-      { name: '天机夔龙玉佩', stage: 'pattern', icon: 'pendant', amount: '3—4 个合成/兑换上级玉佩', purpose: '点化武器天机', source: '合成界面、仙友会多宝仙人' },
-    ],
-  },
   equipment: {
     stages: [
       { id: 'obtain', name: '装备获取', description: '收集图纸、卷轴和副本材料取得当前等级装备。' },
@@ -249,43 +233,44 @@ export const SYSTEM_GUIDES = {
   },
 };
 
+const professionWeapons = ([ranger, warrior, mage, talisman]) => [
+  { profession: '游侠系', type: '剑', name: ranger, icon: 'sword' },
+  { profession: '力士系', type: warrior.endsWith('斧') ? '斧' : '锤', name: warrior, icon: warrior.endsWith('斧') ? 'axe' : 'hammer' },
+  { profession: '法师系', type: '杖', name: mage, icon: 'staff' },
+  { profession: '符咒系', type: talisman.endsWith('枝') ? '枝' : '剑', name: talisman, icon: 'talisman' },
+];
+
 export const WEAPON_EVOLUTION = {
   kind: 'weapon-evolution',
   reviewed: true,
   reviewedAt: '2026-07-02',
+  attributeSource: 'https://www.sohu.com/a/729377612_121124834',
+  soulRanks: ['凡品', '上品', '精品', '极品', '仙品', '圣品', '地品', '神品', '天品', '星品', '月品', '阳品', '荒品', '洪品', '虚品', '羲品', '昊品', '域品', '寰品'],
+  attributeTypes: [
+    { name: '破霄灭魔', tone: 'attack', suitable: '输出职业', primary: '忽略防御 / 忽略法抗', secondary: '会心几率、会心上限' },
+    { name: '夺天斩月', tone: 'output', suitable: '输出与治疗', primary: '最终输出 / 最终治疗', secondary: '会心、会心上限、忽略防御 / 法抗' },
+    { name: '无量天罗', tone: 'defense', suitable: '力士与符咒', primary: '物理防御', secondary: '抵抗会心、会心伤害减免' },
+    { name: '无相天封', tone: 'resist', suitable: '法抗需求', primary: '法术抗性', secondary: '抵抗会心、会心伤害减免' },
+  ],
   stages: [
     {
       id: 'immortal-demon', order: 1, label: '仙魔武器', firstSeen: '2015 年前',
-      names: ['天丁开山', '青影飞雷', '血饮红莲', '洞光锁神仙魔剑'],
-      obtain: '历史仙魔武器体系；现有官网版本公告未保留最初制作配方。',
-      materials: [
-        { name: '仙魔武器强化符', icon: 'scroll', amount: '每次 1 张', note: '强化 1—4 级仙魔武器，100% 提升 1 级。', source: '活动兑换、角木蛟与箕水豹等首领掉落' },
-        { name: '小红花', icon: 'token', amount: '20 朵', note: '兑换 1 张绑定仙魔武器强化符。', source: '2015 年活动' },
-        { name: '天空之船印记', icon: 'token', amount: '20 枚', note: '兑换 1 张绑定仙魔武器强化符。', source: '天空之船活动' },
-        { name: '仙魔文书', icon: 'book', amount: '公告未注明', note: '用于一代或二代仙魔武器同代互转。', source: '历史兑换渠道' },
-      ],
+      weapons: professionWeapons(['天丁开山', '青影飞雷', '血饮红莲', '洞光锁神仙魔剑']),
+      attributes: { system: '历史仙魔武器', prefix: '真阳 / 玄阴', soulCap: '非武魂体系', rareAppearance: false },
       events: [
         { date: '2015-03-24', text: '传奇仙魔武器可凝练为传奇【真阳】【玄阴】武器。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201503/310341.shtml' },
-        { date: '2015-05-26', text: '开放仙魔武器强化符：20 朵小红花兑换 1 张。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201505/345172.shtml' },
-        { date: '2015-08-04', text: '天空之船印记 20 枚可兑换仙魔武器强化符 1 张。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201508/366539.shtml' },
-        { date: '2016-01-12', text: '仙魔文书可使一代、二代仙魔武器进行同代互转。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201601/422963.shtml' },
       ],
     },
     {
       id: 'level-100', order: 2, label: '100 级武器', firstSeen: '2016 年前',
-      names: ['曲水剑', '碎梦锤', '龙牙杖', '苍炎枝'],
-      obtain: '旧版 100 级初代武魂武器；现有官网公告未记录最初兑换或制作材料。',
-      materials: [],
-      events: [
-        { date: '2016-11-22', text: '绑定后的四把初代武器被调整为不可进行资源回收。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201611/525861.shtml' },
-        { date: '2017-03-28', text: '绑定但未附加武魂的初代武器恢复资源回收，可获得聚气之晶和流彩灵石。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201703/566498.shtml' },
-      ],
+      weapons: professionWeapons(['曲水剑', '碎梦锤', '龙牙杖', '苍炎枝']),
+      attributes: { system: '初代武魂武器', prefix: '历史七类前缀', soulCap: '官网资料未标明', rareAppearance: false },
+      events: [],
     },
     {
       id: 'level-100-gen2', order: 3, label: '100 级二代武器', firstSeen: '2018 年前',
-      names: ['无影剑', '烈风锤', '雷音杖', '飞仙枝'],
-      obtain: '旧版 100 级二代武魂武器；现有官网公告未记录最初兑换或制作材料。',
-      materials: [],
+      weapons: professionWeapons(['无影剑', '烈风锤', '雷音杖', '飞仙枝']),
+      attributes: { system: '二代武魂武器', prefix: '历史七类前缀', soulCap: '地品十阶', rareAppearance: false },
       events: [
         { date: '2018-12-04', text: '武魂强化上限由仙品十阶提升至圣品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201812/779076.shtml' },
         { date: '2019-04-23', text: '武魂强化上限继续提升至地品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201904/805197.shtml' },
@@ -293,122 +278,76 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-120', order: 4, label: '120 级武器', firstSeen: '2019',
-      names: ['惊虹剑', '巨灵锤', '承天杖', '涅槃枝'],
-      obtain: '直接掉落型武器，不需要先收集兑换材料。',
-      materials: [],
-      events: [
-        { date: '2019-11-26', text: '湘云水府镇妖塔 18 层必定掉落 1 把 120 级武器。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201911/838356.shtml' },
-        { date: '2019-12-03', text: '门派上清幻境八爪毒鱆增加 120 级武魂武器掉落。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201912/839430.shtml' },
-        { date: '2020-01-07', text: '上清幻境掉落由拾取绑定调整为装备绑定。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202001/844042.shtml' },
-      ],
+      weapons: professionWeapons(['惊虹剑', '巨灵锤', '承天杖', '涅槃枝']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '官网资料未标明', rareAppearance: false },
+      events: [],
     },
     {
       id: 'level-135', order: 5, label: '135 级武器', firstSeen: '2020',
-      names: ['寂灭剑', '如意锤', '炼神杖', '融灵枝'],
-      obtain: '本区及跨区世界 BOSS 直接掉落。',
-      materials: [],
-      events: [
-        { date: '2020-09-08', text: '本区世界 BOSS 调整为掉落 2 把 135 级武器；部分跨区 BOSS 同步调整。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202009/869542.shtml' },
-        { date: '2020-12-08', text: '黑羽枭王团队奖励包含随机 3 把 135 级武器。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202012/877229.shtml' },
-      ],
+      weapons: professionWeapons(['寂灭剑', '如意锤', '炼神杖', '融灵枝']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '官网资料未标明', rareAppearance: false },
+      events: [],
     },
     {
       id: 'level-150', order: 6, label: '150 级武器', firstSeen: '2020',
-      names: ['断空剑', '荒神锤', '蚀骨杖', '渡业剑'],
-      obtain: '最初由世界 BOSS 直接掉落，后续加入活动和直升礼包。',
-      materials: [],
-      events: [
-        { date: '2020-09-08', text: '扶疏及多只跨区世界 BOSS 增加 150 级武器直接掉落。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202009/869542.shtml' },
-        { date: '2021-07-28', text: '恭贰、恭叁掉落奖励加入随机 150 级武器。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202107/896176.shtml' },
-        { date: '2022-06-08', text: '世界 BOSS 移除 150 级武魂武器掉落。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202206/916491.shtml' },
-      ],
+      weapons: professionWeapons(['断空剑', '荒神锤', '蚀骨杖', '渡业剑']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '官网资料未标明', rareAppearance: false },
+      events: [],
     },
     {
       id: 'level-170', order: 7, label: '170 级武器', firstSeen: '2020',
-      names: ['澜霜剑', '弑厄锤', '螣渊杖', '羲曜剑'],
-      obtain: '收集青玄陨铁，在道具合成界面制作武魂武器礼包。',
-      materials: [
-        { name: '青玄陨铁', icon: 'ore', amount: '100 块', note: '合成 1 个 170 级武魂武器礼包。', source: '对应版本世界首领与活动产出' },
-      ],
+      weapons: professionWeapons(['澜霜剑', '弑厄锤', '螣渊杖', '羲曜剑']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '星品十阶', rareAppearance: false },
       events: [
-        { date: '2020-12-08', text: '100 块青玄陨铁合成 1 个礼包；武魂上限开放至星品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202012/877229.shtml' },
-        { date: '2022-05-25', text: '战力直升礼包【传奇】加入 170 级武器。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202205/915618.shtml' },
+        { date: '2020-12-08', text: '170 级武器开放时，武魂上限为星品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202012/877229.shtml' },
       ],
     },
     {
       id: 'level-180', order: 8, label: '180 级武器', firstSeen: '2022',
-      names: ['金阳剑', '陌煌锤', '珠虚杖', '炽鸾剑', '同名·极外观'],
-      obtain: '官网首个可确认渠道为战力直升礼包【至尊】；初始兑换配方未在现有公告中披露。',
-      materials: [],
+      weapons: professionWeapons(['金阳剑', '陌煌锤', '珠虚杖', '炽鸾剑']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '昊品十阶', rareAppearance: true },
       events: [
-        { date: '2022-05-25', text: '战力直升礼包【至尊】明确包含 180 级武器。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202205/915618.shtml' },
-        { date: '2024-03-05', text: '包含·极外观在内的 180 级武器开放至昊品十阶，使用天昕石提升。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202403/949080.shtml' },
+        { date: '2024-03-05', text: '普通与同名·极武器的武魂上限开放至昊品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202403/949080.shtml' },
       ],
     },
     {
       id: 'level-190', order: 9, label: '190 级武器', firstSeen: '2022',
-      names: ['掣元剑', '陨霆锤', '蕴华杖', '御幽剑', '同名·极外观'],
-      obtain: '在京城广场门口游方旅人处兑换职业武器礼包。',
-      materials: [
-        { name: '七星神钢锭', icon: 'ingot', amount: '100 枚', note: '与灼焱水晶共同兑换 190 级礼包。', source: '世界 BOSS' },
-        { name: '灼焱水晶', icon: 'crystal', amount: '1,000 枚', note: '与七星神钢锭共同兑换 190 级礼包。', source: '对应副本与活动' },
-      ],
+      weapons: professionWeapons(['掣元剑', '陨霆锤', '蕴华杖', '御幽剑']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '昊品十阶', rareAppearance: true },
       events: [
-        { date: '2022-06-08', text: '开放 190 级礼包兑换；礼包低概率开出·极外观武器。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202206/916491.shtml' },
-        { date: '2024-03-05', text: '开放至昊品十阶，使用天昕石提升武魂等阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202403/949080.shtml' },
+        { date: '2024-03-05', text: '普通与同名·极武器的武魂上限开放至昊品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202403/949080.shtml' },
       ],
     },
     {
       id: 'level-200', order: 10, label: '200 级武器', firstSeen: '2023',
-      names: ['玹炀剑', '炙鸿锤', '珞滢杖', '鸢翎剑', '同名·极外观'],
-      obtain: '在京城广场门口游方旅人处兑换职业武器礼包。',
-      materials: [
-        { name: '云纹秘钢锭', icon: 'ingot', amount: '兑换总数公告未注明', note: '200 级礼包兑换材料。', source: '跨区世界 BOSS 每次 10 枚；鬼金邪将每次 20 枚' },
-        { name: '苍碧水晶', icon: 'crystal', amount: '兑换总数公告未注明', note: '200 级礼包兑换材料。', source: '不周山·仙魔终战副本' },
-      ],
+      weapons: professionWeapons(['玹炀剑', '炙鸿锤', '珞滢杖', '鸢翎剑']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '寰品十阶', rareAppearance: true },
       events: [
-        { date: '2023-05-09', text: '新增 200 级武器及·极外观，并开放云纹秘钢锭、苍碧水晶兑换。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202305/934088.shtml' },
-        { date: '2024-11-12', text: '桃香谷、怒海争霸等玩法增加 200 级武魂武器直接掉落。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202411/961490.shtml' },
-        { date: '2026-03-03', text: '武魂上限开放至寰品十阶，使用天曜石提升。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202603/982880.shtml' },
+        { date: '2026-03-03', text: '武魂上限开放至寰品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202603/982880.shtml' },
       ],
     },
     {
       id: 'level-220', order: 11, label: '220 级武器', firstSeen: '2024',
-      names: ['晟源剑', '弥臻斧', '洵烽杖', '虞琼剑', '同名·极外观'],
-      obtain: '使用玄光秘银锭在京城广场门口游方旅人处兑换职业武器礼包。',
-      materials: [
-        { name: '玄光秘银锭', icon: 'ingot', amount: '兑换总数公告未注明', note: '兑换 220 级武魂武器礼包。', source: '本区/跨区世界首领；生死劫 BOSS；神威印记兑换' },
-      ],
+      weapons: professionWeapons(['晟源剑', '弥臻斧', '洵烽杖', '虞琼剑']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '昊品十阶', rareAppearance: true },
       events: [
-        { date: '2024-05-07', text: '开放玄光秘银锭掉落与 220 级礼包兑换；武魂上限为昊品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202405/951820.shtml' },
-        { date: '2024-05-14', text: '游方旅人增加神威印记兑换玄光秘银锭。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202405/952117.shtml' },
-        { date: '2025-02-25', text: '生死劫 BOSS 增加玄光秘银锭掉落；凝霜可掉 1—3 枚或 10 枚礼包。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202502/965935.shtml' },
-        { date: '2025-05-07', text: '盘丝洞副本增加 220 级武魂武器礼包直接掉落。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202505/969126.shtml' },
+        { date: '2024-05-07', text: '220 级武器开放时，武魂上限为昊品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202405/951820.shtml' },
       ],
     },
     {
       id: 'level-240', order: 12, label: '240 级武器', firstSeen: '2025',
-      names: ['凌阙剑', '晦明锤', '穹岳杖', '溯荒剑', '同名·极外观'],
-      obtain: '使用太玄铁精锭在京城广场门口游方旅人处兑换职业武器礼包。',
-      materials: [
-        { name: '太玄铁精锭', icon: 'ingot', amount: '兑换总数公告未注明', note: '兑换 240 级武魂武器礼包。', source: '本区/跨区世界 BOSS、四方室火猪等' },
-      ],
+      weapons: professionWeapons(['凌阙剑', '晦明锤', '穹岳杖', '溯荒剑']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '域品十阶', rareAppearance: true },
       events: [
-        { date: '2025-05-07', text: '开放太玄铁精锭掉落及 240 级礼包兑换；武魂上限为域品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202505/969126.shtml' },
-        { date: '2025-08-12', text: '【四方】室火猪奖励加入太玄铁精锭。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202508/973842.shtml' },
-        { date: '2025-11-04', text: '新副本增加 240 级武魂武器礼包直接掉落。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202511/977450.shtml' },
+        { date: '2025-05-07', text: '240 级武器开放时，武魂上限为域品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202505/969126.shtml' },
       ],
     },
     {
       id: 'level-260', order: 13, label: '260 级武器', firstSeen: '2026',
-      names: ['郦辰剑', '破擎锤', '沄曦杖', '丹枫剑', '同名·极外观'],
-      obtain: '使用真昊玄金锭在京城广场门口游方旅人处兑换职业武器礼包。',
-      materials: [
-        { name: '真昊玄金锭', icon: 'ingot', amount: '兑换总数公告未注明', note: '兑换 260 级武魂武器礼包。', source: '本区及跨区世界 BOSS' },
-      ],
+      weapons: professionWeapons(['郦辰剑', '破擎锤', '沄曦杖', '丹枫剑']),
+      attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '寰品十阶', rareAppearance: true },
       events: [
-        { date: '2026-05-07', text: '开放真昊玄金锭掉落及 260 级礼包兑换；武魂上限为寰品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202605/985548.shtml' },
-        { date: '2026-05-12', text: '持有绑定·极外观武器可领取对应仙衣华裳外观。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202605/985703.shtml' },
+        { date: '2026-05-07', text: '260 级武器开放时，武魂上限为寰品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202605/985548.shtml' },
       ],
     },
   ],

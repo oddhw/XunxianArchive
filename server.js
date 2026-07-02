@@ -16,7 +16,7 @@ const LIST_PATH = '/webplat/info/news_version3/154/2233/3889/m2702/list_';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) XunxianArchive/1.0';
 
 const SYSTEM_DEFINITIONS = [
-  { id: 'weapon', name: '武器系统', short: '武器', group: '战力养成', icon: 'blade', color: '#75e4b1', description: '武器等级、武魂品阶、阵纹孔洞与相关兑换材料。', keywords: ['武器', '武魂', '阵纹'] },
+  { id: 'weapon', name: '武器系统', short: '武器', group: '战力养成', icon: 'blade', color: '#75e4b1', description: '逐代查看四类职业武器名称、属性前缀与武魂上限。', keywords: ['武器', '武魂', '属性', '游侠', '力士', '法师', '符咒'] },
   { id: 'equipment', name: '装备系统', short: '装备', group: '战力养成', icon: 'armor', color: '#72c9e9', description: '防具、首饰、套装、强化、精炼、镶嵌与宝石迭代。', keywords: ['装备', '防具', '首饰', '套装', '强化', '精炼', '镶嵌', '宝石'] },
   { id: 'attendant-pet', name: '侍宠 · 宝宝', short: '侍宠', group: '宠物伙伴', icon: 'pet', color: '#e2b872', description: '侍宠获取、四维成长、融合、技能与魂器养成。', keywords: ['侍宠', '宝宝', '宠物', '魂器'] },
   { id: 'mount-pet', name: '骑宠系统', short: '骑宠', group: '宠物伙伴', icon: 'mount', color: '#ef8f91', description: '骑宠获取、进化、被动属性、技能和骑宠装备。', keywords: ['骑宠', '坐骑'] },
@@ -264,7 +264,7 @@ function buildGuideCache() {
   guideCache = new Map();
   for (const system of systemCache) {
     if (system.id === 'weapon') {
-      const materialCount = WEAPON_EVOLUTION.stages.reduce((sum, stage) => sum + stage.materials.length, 0);
+      const weaponCount = WEAPON_EVOLUTION.stages.reduce((sum, stage) => sum + stage.weapons.length, 0);
       guideCache.set(system.id, {
         ...WEAPON_EVOLUTION,
         system: {
@@ -273,11 +273,11 @@ function buildGuideCache() {
           group: system.group,
           icon: system.icon,
           color: system.color,
-          description: '从仙魔武器到 260 级武魂武器的逐代演进、职业武器名称、取得方式和明确材料数量。',
+          description: '从仙魔武器到 260 级武魂武器，逐代查看四类职业武器名称与可核验属性。',
           latestDate: system.latestDate,
         },
         stageCount: WEAPON_EVOLUTION.stages.length,
-        materialCount,
+        materialCount: weaponCount,
       });
       continue;
     }

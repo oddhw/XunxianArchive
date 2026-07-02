@@ -61,11 +61,20 @@ const materialIcons = {
   silk: '<svg viewBox="0 0 32 32"><path d="m10 5 6 3 6-3 6 6-5 4v12H9V15l-5-4 6-6Z"/><path d="M12 6c0 4 1 6 4 6s4-2 4-6"/></svg>',
 };
 
+const weaponIcons = {
+  sword: '<svg viewBox="0 0 48 48"><path d="m13 36 5-5m-8 10-3-3 7-7 3 3-7 7Zm7-12L35 11l5-3-3 6-18 18m11-13 3 3"/></svg>',
+  hammer: '<svg viewBox="0 0 48 48"><path d="m12 38 18-18m-5-9 5-5 11 11-5 5-11-11Zm-3 3 12 12M9 34l5 5"/></svg>',
+  axe: '<svg viewBox="0 0 48 48"><path d="M13 40 30 18m-5-7 4-5c6 1 10 4 13 9l-4 5c-5-4-9-6-13-9Zm-6 8 12 9M9 35l6 5"/></svg>',
+  staff: '<svg viewBox="0 0 48 48"><path d="M13 41 31 15m-3-5 5-5 7 7-5 5-7-7Zm-5 13 7 5M11 36l6 4"/><circle cx="34" cy="11" r="3"/></svg>',
+  talisman: '<svg viewBox="0 0 48 48"><path d="m12 39 23-27m-18 5 5 4m3-12 12-2 4 8-7 7M9 35l7 6m18-19-2 8m2-8 7 1"/></svg>',
+};
+
 function escapeHtml(value = '') { return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
 function escapeRegex(value = '') { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function highlight(value, query = '') { const safe = escapeHtml(value); if (!query) return safe; return safe.replace(new RegExp(`(${escapeRegex(query)})`, 'gi'), '<mark>$1</mark>'); }
 function icon(name) { return icons[name] || icons.orb; }
 function materialIcon(name) { return materialIcons[name] || materialIcons.crystal; }
+function weaponIcon(name) { return weaponIcons[name] || weaponIcons.sword; }
 async function request(url) { const response = await fetch(url); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || '请求失败'); return data; }
 function toast(message) { const node = document.createElement('div'); node.className = 'toast'; node.textContent = message; els.toastWrap.append(node); setTimeout(() => node.remove(), 2800); }
 
@@ -96,7 +105,7 @@ function renderSystems() {
     <button class="system-card ${system.reviewed ? 'reviewed' : 'pending-review'}" type="button" data-system-id="${system.id}" style="--system-color:${system.color}">
       <div class="card-top"><span class="system-icon">${icon(system.icon)}</span><span class="card-group">${escapeHtml(system.group)}</span><span class="review-badge">${system.reviewed ? '已逐项校对' : '待校对'}</span></div>
       <h3>${highlight(system.name, state.query)}</h3><p>${highlight(system.description, state.query)}</p>
-      <div class="card-stats">${system.reviewed ? `<span><b>${system.stageCount}</b>代武器</span><span><b>${system.materialItemCount}</b>项材料</span><span class="card-arrow"><svg viewBox="0 0 20 20"><path d="m7 4 6 6-6 6"/></svg></span>` : '<span>资料暂不展示，等待逐项核对</span>'}</div>
+      <div class="card-stats">${system.reviewed ? `<span><b>${system.stageCount}</b>代武器</span><span><b>${system.materialItemCount}</b>把职业武器</span><span class="card-arrow"><svg viewBox="0 0 20 20"><path d="m7 4 6 6-6 6"/></svg></span>` : '<span>资料暂不展示，等待逐项核对</span>'}</div>
     </button>`).join('');
 }
 
@@ -197,48 +206,59 @@ function renderMaterials() {
   return `<div class="material-legend"><span><i></i>数量为官网明确值</span><span>“按阶段”表示不同档位消耗不同，避免用单一数字误导。</span></div><div class="material-catalog">${materials.map((material) => materialCard(material)).join('')}</div>`;
 }
 
-function weaponMaterialTemplate(material, stageLabel) {
-  return `<article class="weapon-material">
-    <div class="weapon-material-head"><div class="material-icon">${materialIcon(material.icon)}</div><div><span>${escapeHtml(stageLabel)}</span><h4>${highlight(material.name, state.detailQuery)}</h4></div></div>
-    <div class="weapon-material-amount"><span>需求数量</span><strong>${escapeHtml(material.amount)}</strong></div>
-    <p>${highlight(material.note, state.detailQuery)}</p><footer><span>来源</span>${highlight(material.source, state.detailQuery)}</footer>
-  </article>`;
-}
-
 function weaponEventsTemplate(events) {
   return `<ol class="weapon-event-list">${events.map((event) => `<li><time>${escapeHtml(event.date)}</time><p>${escapeHtml(event.text)}</p><a href="${escapeHtml(event.url)}" target="_blank" rel="noopener noreferrer">依据 ↗</a></li>`).join('')}</ol>`;
 }
 
+function professionWeaponTemplate(weapon) {
+  return `<article class="profession-weapon">
+    <div class="profession-weapon-icon" data-kind="${escapeHtml(weapon.icon)}">${weaponIcon(weapon.icon)}</div>
+    <div><span>${escapeHtml(weapon.profession)} · ${escapeHtml(weapon.type)}</span><h4>${highlight(weapon.name, state.detailQuery)}</h4></div>
+  </article>`;
+}
+
+function stageAttributesTemplate(stage) {
+  const { attributes } = stage;
+  return `<div class="stage-attributes">
+    <div><span>武器体系</span><strong>${escapeHtml(attributes.system)}</strong></div>
+    <div><span>属性前缀</span><strong>${escapeHtml(attributes.prefix)}</strong></div>
+    <div class="${attributes.soulCap.includes('未标明') ? 'pending-value' : ''}"><span>武魂上限</span><strong>${escapeHtml(attributes.soulCap)}</strong></div>
+    <div><span>·极外观</span><strong>${attributes.rareAppearance ? '同属性，仅外观不同' : '无'}</strong></div>
+  </div>`;
+}
+
 function renderWeaponEvolution() {
   const query = state.detailQuery.toLowerCase();
-  const stages = state.guide.stages.filter((stage) => !query || `${stage.label} ${stage.names.join(' ')} ${stage.obtain} ${stage.materials.map((m) => `${m.name} ${m.amount}`).join(' ')}`.toLowerCase().includes(query));
+  const stages = state.guide.stages.filter((stage) => !query || `${stage.label} ${stage.weapons.map((weapon) => `${weapon.profession} ${weapon.type} ${weapon.name}`).join(' ')} ${Object.values(stage.attributes).join(' ')}`.toLowerCase().includes(query));
   els.detailResultCount.textContent = `${stages.length} / ${state.guide.stageCount} 代`;
-  if (!stages.length) return '<div class="detail-empty">没有找到对应等级或材料。</div>';
-  return `<div class="weapon-audit-note"><span>已逐项校对</span><p>仅录入官网或可交叉核对的信息；公告没有公布兑换数量的材料，明确标为“未注明”。</p></div><div class="weapon-evolution">${stages.map((stage) => `
+  if (!stages.length) return '<div class="detail-empty">没有找到对应等级、职业或武器名。</div>';
+  return `<div class="weapon-audit-note"><span>名称与属性模式</span><p>页面仅保留职业武器名称与可核验属性。当前图形用于区分职业类型；真实道具图标将从本机《新寻仙》客户端资源包核对提取。</p></div><div class="weapon-evolution">${stages.map((stage) => `
     <section class="weapon-generation">
       <div class="generation-axis"><span>${String(stage.order).padStart(2, '0')}</span><i></i></div>
       <div class="generation-card">
-        <header><div><span>官网首见 · ${escapeHtml(stage.firstSeen)}</span><h3>${highlight(stage.label, state.detailQuery)}</h3></div><small>${stage.materials.length ? `${stage.materials.length} 项材料` : '直接掉落 / 配方缺失'}</small></header>
-        <div class="weapon-names">${stage.names.map((name) => `<span>${highlight(name, state.detailQuery)}</span>`).join('')}</div>
-        <div class="weapon-obtain"><span>取得方式</span><p>${highlight(stage.obtain, state.detailQuery)}</p></div>
-        ${stage.materials.length ? `<div class="weapon-materials">${stage.materials.map((material) => weaponMaterialTemplate(material, stage.label)).join('')}</div>` : '<div class="no-recipe">现存官网公告未披露可核验的初始材料数量，不补猜测。</div>'}
-        <details class="generation-history"><summary><span>版本变化</span><small>${stage.events.length} 个节点</small><svg viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></svg></summary>${weaponEventsTemplate(stage.events)}</details>
+        <header><div><span>资料首见 · ${escapeHtml(stage.firstSeen)}</span><h3>${highlight(stage.label, state.detailQuery)}</h3></div><small>4 类职业武器</small></header>
+        <div class="profession-weapons">${stage.weapons.map(professionWeaponTemplate).join('')}</div>
+        ${stageAttributesTemplate(stage)}
+        ${stage.events.length ? `<details class="generation-history"><summary><span>属性变化</span><small>${stage.events.length} 个节点</small><svg viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></svg></summary>${weaponEventsTemplate(stage.events)}</details>` : ''}
       </div>
     </section>`).join('')}</div>`;
 }
 
-function renderWeaponMaterials() {
+function renderWeaponAttributes() {
   const query = state.detailQuery.toLowerCase();
-  const rows = state.guide.stages.flatMap((stage) => stage.materials.map((material) => ({ stage, material }))).filter(({ stage, material }) => !query || `${stage.label} ${material.name} ${material.amount} ${material.note} ${material.source}`.toLowerCase().includes(query));
-  els.detailResultCount.textContent = `${rows.length} 项已核对材料`;
-  if (!rows.length) return '<div class="detail-empty">没有找到对应材料。</div>';
-  return `<div class="weapon-audit-note"><span>材料口径</span><p>数量以公告明确文字为准；“兑换总数未注明”不是缺省值，而是官网没有公开兑换总量。</p></div><div class="weapon-material-catalog">${rows.map(({ stage, material }) => weaponMaterialTemplate(material, stage.label)).join('')}</div>`;
+  const types = state.guide.attributeTypes.filter((type) => !query || `${type.name} ${type.suitable} ${type.primary} ${type.secondary}`.toLowerCase().includes(query));
+  els.detailResultCount.textContent = `${types.length} / ${state.guide.attributeTypes.length} 类属性`;
+  if (!types.length) return '<div class="detail-empty">没有找到对应属性。</div>';
+  return `<div class="attribute-intro"><span>四类主流属性前缀</span><p>原 120 级武魂武器起采用这四类属性方向；100 级早期武器曾有七类历史前缀。</p></div>
+    <div class="attribute-type-grid">${types.map((type) => `<article class="attribute-type" data-tone="${escapeHtml(type.tone)}"><header><span>${escapeHtml(type.suitable)}</span><h3>${highlight(type.name, state.detailQuery)}</h3></header><div><span>核心属性</span><strong>${highlight(type.primary, state.detailQuery)}</strong></div><p>${highlight(type.secondary, state.detailQuery)}</p></article>`).join('')}</div>
+    <section class="soul-rank-panel"><header><span>武魂品阶</span><h3>由低到高</h3></header><div>${state.guide.soulRanks.map((rank, index) => `<span><small>${String(index + 1).padStart(2, '0')}</small>${escapeHtml(rank)}</span>`).join('')}</div></section>
+    <div class="rare-appearance-note"><strong>关于“·极”</strong><p>180 级及之后的同名“·极”武器只增加稀有外观，属性与普通同名武器一致。</p><a href="${escapeHtml(state.guide.attributeSource)}" target="_blank" rel="noopener noreferrer">查看属性资料依据 ↗</a></div>`;
 }
 
 function renderGuide() {
   if (!state.guide) return;
   if (state.guide.kind === 'weapon-evolution') {
-    els.detailList.innerHTML = state.section === 'materials' ? renderWeaponMaterials() : renderWeaponEvolution();
+    els.detailList.innerHTML = state.section === 'materials' ? renderWeaponAttributes() : renderWeaponEvolution();
     return;
   }
   els.detailList.innerHTML = state.section === 'materials' ? renderMaterials() : renderRoute();
