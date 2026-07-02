@@ -1,0 +1,32 @@
+# 寻仙 DPK 资源浏览器
+
+一个基于 WinUI 3 的本地资源工具，直接读取《新寻仙》客户端的 `whpackage1.0` DPK 包。
+
+## 已支持
+
+- 图标与贴图：PNG、JPG、DDS 等缩略图和大图预览。
+- 声音：OGG、WAV 直接播放。
+- 模型：解析 PMF 顶点与三角形索引，支持拖拽旋转、滚轮缩放的线框预览。
+- 解包：导出单个资源，或按搜索条件批量导出并保留包名和内部目录结构。
+- 自动发现默认安装位置 `D:\Program Files\腾讯游戏\新寻仙\res`。
+
+## 构建
+
+需要 .NET 10 SDK。项目使用 Windows App SDK 2.2，目标为 Windows x64：
+
+```powershell
+dotnet restore .\tools\XunxianDpkViewer\XunxianDpkViewer.csproj
+dotnet build .\tools\XunxianDpkViewer\XunxianDpkViewer.csproj -c Release -p:Platform=x64
+```
+
+这是自包含的非 MSIX WinUI 3 项目，发布时可使用：
+
+```powershell
+dotnet publish .\tools\XunxianDpkViewer\XunxianDpkViewer.csproj -c Release -r win-x64 --self-contained true
+```
+
+发布后的程序位于 `bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\publish\XunxianDpkViewer.exe`。也可以给程序传入 `--self-test`，用已安装的客户端资源执行 DPK、PNG、OGG 和 PMF 解码自检，结果写入 `%LOCALAPPDATA%\XunxianDpkViewer\self-test.log`。
+
+## 格式说明
+
+DPK/WHSC 解码使用客户端实际密钥与块链格式。PMF 首版预览覆盖寻仙常见的静态、带法线、多 UV、颜色以及骨骼权重顶点声明；它显示几何线框，不还原客户端材质着色器或角色动画。
