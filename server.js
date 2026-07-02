@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SYSTEM_GUIDES } from './knowledge.js';
+import { SYSTEM_GUIDES, WEAPON_EVOLUTION } from './knowledge.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -263,6 +263,24 @@ function materialEvidence(material) {
 function buildGuideCache() {
   guideCache = new Map();
   for (const system of systemCache) {
+    if (system.id === 'weapon') {
+      const materialCount = WEAPON_EVOLUTION.stages.reduce((sum, stage) => sum + stage.materials.length, 0);
+      guideCache.set(system.id, {
+        ...WEAPON_EVOLUTION,
+        system: {
+          id: system.id,
+          name: system.name,
+          group: system.group,
+          icon: system.icon,
+          color: system.color,
+          description: '从仙魔武器到 260 级武魂武器的逐代演进、职业武器名称、取得方式和明确材料数量。',
+          latestDate: system.latestDate,
+        },
+        stageCount: WEAPON_EVOLUTION.stages.length,
+        materialCount,
+      });
+      continue;
+    }
     const blueprint = SYSTEM_GUIDES[system.id];
     if (!blueprint) continue;
     const materials = blueprint.materials.map(materialEvidence);
@@ -307,6 +325,7 @@ function listSystems(params) {
       ...system,
       stageCount: guide?.stageCount || 0,
       materialItemCount: guide?.materialCount || 0,
+      reviewed: system.id === 'weapon',
     };
   });
   const groups = [...new Set(SYSTEM_DEFINITIONS.map((item) => item.group))];

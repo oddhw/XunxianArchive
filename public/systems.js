@@ -93,10 +93,10 @@ function renderSystems() {
   els.emptyState.hidden = systems.length > 0;
   els.systemGrid.hidden = systems.length === 0;
   els.systemGrid.innerHTML = systems.map((system) => `
-    <button class="system-card" type="button" data-system-id="${system.id}" style="--system-color:${system.color}">
-      <div class="card-top"><span class="system-icon">${icon(system.icon)}</span><span class="card-group">${escapeHtml(system.group)}</span></div>
+    <button class="system-card ${system.reviewed ? 'reviewed' : 'pending-review'}" type="button" data-system-id="${system.id}" style="--system-color:${system.color}">
+      <div class="card-top"><span class="system-icon">${icon(system.icon)}</span><span class="card-group">${escapeHtml(system.group)}</span><span class="review-badge">${system.reviewed ? '已逐项校对' : '待校对'}</span></div>
       <h3>${highlight(system.name, state.query)}</h3><p>${highlight(system.description, state.query)}</p>
-      <div class="card-stats"><span><b>${system.stageCount}</b>个阶段</span><span><b>${system.materialItemCount}</b>种材料</span><span class="card-arrow"><svg viewBox="0 0 20 20"><path d="m7 4 6 6-6 6"/></svg></span></div>
+      <div class="card-stats">${system.reviewed ? `<span><b>${system.stageCount}</b>代武器</span><span><b>${system.materialItemCount}</b>项材料</span><span class="card-arrow"><svg viewBox="0 0 20 20"><path d="m7 4 6 6-6 6"/></svg></span>` : '<span>资料暂不展示，等待逐项核对</span>'}</div>
     </button>`).join('');
 }
 
@@ -104,8 +104,8 @@ async function loadSystems() {
   try {
     const [data, stats] = await Promise.all([request('/api/systems'), request('/api/stats')]);
     state.systems = data.systems; state.groups = data.groups;
-    const stages = data.systems.reduce((sum, item) => sum + item.stageCount, 0);
-    const materials = data.systems.reduce((sum, item) => sum + item.materialItemCount, 0);
+    const stages = data.systems.filter((item) => item.reviewed).reduce((sum, item) => sum + item.stageCount, 0);
+    const materials = data.systems.filter((item) => item.reviewed).reduce((sum, item) => sum + item.materialItemCount, 0);
     els.systemCount.textContent = data.systems.length;
     els.updateCount.textContent = stages.toLocaleString('zh-CN');
     els.materialCount.textContent = materials.toLocaleString('zh-CN');
@@ -129,6 +129,11 @@ function setDrawerSummary(guide) {
 }
 
 async function openSystem(id, section = 'route') {
+  const metadata = state.systems.find((item) => item.id === id);
+  if (metadata && !metadata.reviewed) {
+    toast(`${metadata.name}尚未逐项校对，当前先只开放武器系统。`);
+    return;
+  }
   state.selected = id; state.section = section; state.detailQuery = ''; state.guide = null;
   els.detailSearch.value = '';
   els.detailList.innerHTML = '<div class="detail-empty">正在建立养成图谱…</div>';
@@ -192,8 +197,50 @@ function renderMaterials() {
   return `<div class="material-legend"><span><i></i>数量为官网明确值</span><span>“按阶段”表示不同档位消耗不同，避免用单一数字误导。</span></div><div class="material-catalog">${materials.map((material) => materialCard(material)).join('')}</div>`;
 }
 
+function weaponMaterialTemplate(material, stageLabel) {
+  return `<article class="weapon-material">
+    <div class="weapon-material-head"><div class="material-icon">${materialIcon(material.icon)}</div><div><span>${escapeHtml(stageLabel)}</span><h4>${highlight(material.name, state.detailQuery)}</h4></div></div>
+    <div class="weapon-material-amount"><span>需求数量</span><strong>${escapeHtml(material.amount)}</strong></div>
+    <p>${highlight(material.note, state.detailQuery)}</p><footer><span>来源</span>${highlight(material.source, state.detailQuery)}</footer>
+  </article>`;
+}
+
+function weaponEventsTemplate(events) {
+  return `<ol class="weapon-event-list">${events.map((event) => `<li><time>${escapeHtml(event.date)}</time><p>${escapeHtml(event.text)}</p><a href="${escapeHtml(event.url)}" target="_blank" rel="noopener noreferrer">依据 ↗</a></li>`).join('')}</ol>`;
+}
+
+function renderWeaponEvolution() {
+  const query = state.detailQuery.toLowerCase();
+  const stages = state.guide.stages.filter((stage) => !query || `${stage.label} ${stage.names.join(' ')} ${stage.obtain} ${stage.materials.map((m) => `${m.name} ${m.amount}`).join(' ')}`.toLowerCase().includes(query));
+  els.detailResultCount.textContent = `${stages.length} / ${state.guide.stageCount} 代`;
+  if (!stages.length) return '<div class="detail-empty">没有找到对应等级或材料。</div>';
+  return `<div class="weapon-audit-note"><span>已逐项校对</span><p>仅录入官网或可交叉核对的信息；公告没有公布兑换数量的材料，明确标为“未注明”。</p></div><div class="weapon-evolution">${stages.map((stage) => `
+    <section class="weapon-generation">
+      <div class="generation-axis"><span>${String(stage.order).padStart(2, '0')}</span><i></i></div>
+      <div class="generation-card">
+        <header><div><span>官网首见 · ${escapeHtml(stage.firstSeen)}</span><h3>${highlight(stage.label, state.detailQuery)}</h3></div><small>${stage.materials.length ? `${stage.materials.length} 项材料` : '直接掉落 / 配方缺失'}</small></header>
+        <div class="weapon-names">${stage.names.map((name) => `<span>${highlight(name, state.detailQuery)}</span>`).join('')}</div>
+        <div class="weapon-obtain"><span>取得方式</span><p>${highlight(stage.obtain, state.detailQuery)}</p></div>
+        ${stage.materials.length ? `<div class="weapon-materials">${stage.materials.map((material) => weaponMaterialTemplate(material, stage.label)).join('')}</div>` : '<div class="no-recipe">现存官网公告未披露可核验的初始材料数量，不补猜测。</div>'}
+        <details class="generation-history"><summary><span>版本变化</span><small>${stage.events.length} 个节点</small><svg viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></svg></summary>${weaponEventsTemplate(stage.events)}</details>
+      </div>
+    </section>`).join('')}</div>`;
+}
+
+function renderWeaponMaterials() {
+  const query = state.detailQuery.toLowerCase();
+  const rows = state.guide.stages.flatMap((stage) => stage.materials.map((material) => ({ stage, material }))).filter(({ stage, material }) => !query || `${stage.label} ${material.name} ${material.amount} ${material.note} ${material.source}`.toLowerCase().includes(query));
+  els.detailResultCount.textContent = `${rows.length} 项已核对材料`;
+  if (!rows.length) return '<div class="detail-empty">没有找到对应材料。</div>';
+  return `<div class="weapon-audit-note"><span>材料口径</span><p>数量以公告明确文字为准；“兑换总数未注明”不是缺省值，而是官网没有公开兑换总量。</p></div><div class="weapon-material-catalog">${rows.map(({ stage, material }) => weaponMaterialTemplate(material, stage.label)).join('')}</div>`;
+}
+
 function renderGuide() {
   if (!state.guide) return;
+  if (state.guide.kind === 'weapon-evolution') {
+    els.detailList.innerHTML = state.section === 'materials' ? renderWeaponMaterials() : renderWeaponEvolution();
+    return;
+  }
   els.detailList.innerHTML = state.section === 'materials' ? renderMaterials() : renderRoute();
 }
 
