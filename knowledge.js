@@ -233,11 +233,16 @@ export const SYSTEM_GUIDES = {
   },
 };
 
-const professionWeapons = ([ranger, warrior, mage, talisman]) => [
-  { profession: '游侠系', type: '剑', name: ranger, icon: 'sword' },
-  { profession: '力士系', type: warrior.endsWith('斧') ? '斧' : '锤', name: warrior, icon: warrior.endsWith('斧') ? 'axe' : 'hammer' },
-  { profession: '法师系', type: '杖', name: mage, icon: 'staff' },
-  { profession: '符咒系', type: talisman.endsWith('枝') ? '枝' : '剑', name: talisman, icon: 'talisman' },
+const clientWeaponIcon = (id) => ({
+  image: `/assets/weapons/wq${id}.png`,
+  iconSource: `gui.dpk · icon/item/wq/wq${id}.png`,
+});
+
+const professionWeapons = ([ranger, warrior, mage, talisman], [rangerIcon, warriorIcon, mageIcon, talismanIcon]) => [
+  { profession: '游侠系', type: '剑', name: ranger, icon: 'sword', ...clientWeaponIcon(rangerIcon) },
+  { profession: '力士系', type: warrior.endsWith('斧') ? '斧' : '锤', name: warrior, icon: warrior.endsWith('斧') ? 'axe' : 'hammer', ...clientWeaponIcon(warriorIcon) },
+  { profession: '法师系', type: '杖', name: mage, icon: 'staff', ...clientWeaponIcon(mageIcon) },
+  { profession: '符咒系', type: talisman.endsWith('枝') ? '枝' : '剑', name: talisman, icon: 'talisman', ...clientWeaponIcon(talismanIcon) },
 ];
 
 export const WEAPON_EVOLUTION = {
@@ -255,7 +260,7 @@ export const WEAPON_EVOLUTION = {
   stages: [
     {
       id: 'immortal-demon', order: 1, label: '仙魔武器', firstSeen: '2015 年前',
-      weapons: professionWeapons(['天丁开山', '青影飞雷', '血饮红莲', '洞光锁神仙魔剑']),
+      weapons: professionWeapons(['天丁开山', '青影飞雷', '血饮红莲', '洞光锁神仙魔剑'], [220, 320, 420, 552]),
       attributes: { system: '历史仙魔武器', prefix: '真阳 / 玄阴', soulCap: '非武魂体系', rareAppearance: false },
       events: [
         { date: '2015-03-24', text: '传奇仙魔武器可凝练为传奇【真阳】【玄阴】武器。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201503/310341.shtml' },
@@ -263,13 +268,13 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-100', order: 2, label: '100 级武器', firstSeen: '2016 年前',
-      weapons: professionWeapons(['曲水剑', '碎梦锤', '龙牙杖', '苍炎枝']),
+      weapons: professionWeapons(['曲水剑', '碎梦锤', '龙牙杖', '苍炎枝'], [221, 321, 421, 553]),
       attributes: { system: '初代武魂武器', prefix: '历史七类前缀', soulCap: '官网资料未标明', rareAppearance: false },
       events: [],
     },
     {
       id: 'level-100-gen2', order: 3, label: '100 级二代武器', firstSeen: '2018 年前',
-      weapons: professionWeapons(['无影剑', '烈风锤', '雷音杖', '飞仙枝']),
+      weapons: professionWeapons(['无影剑', '烈风锤', '雷音杖', '飞仙枝'], [224, 324, 424, 554]),
       attributes: { system: '二代武魂武器', prefix: '历史七类前缀', soulCap: '地品十阶', rareAppearance: false },
       events: [
         { date: '2018-12-04', text: '武魂强化上限由仙品十阶提升至圣品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/201812/779076.shtml' },
@@ -278,25 +283,25 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-120', order: 4, label: '120 级武器', firstSeen: '2019',
-      weapons: professionWeapons(['惊虹剑', '巨灵锤', '承天杖', '涅槃枝']),
+      weapons: professionWeapons(['惊虹剑', '巨灵锤', '承天杖', '涅槃枝'], [225, 325, 425, 555]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '官网资料未标明', rareAppearance: false },
       events: [],
     },
     {
       id: 'level-135', order: 5, label: '135 级武器', firstSeen: '2020',
-      weapons: professionWeapons(['寂灭剑', '如意锤', '炼神杖', '融灵枝']),
+      weapons: professionWeapons(['寂灭剑', '如意锤', '炼神杖', '融灵枝'], [228, 328, 428, 556]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '官网资料未标明', rareAppearance: false },
       events: [],
     },
     {
       id: 'level-150', order: 6, label: '150 级武器', firstSeen: '2020',
-      weapons: professionWeapons(['断空剑', '荒神锤', '蚀骨杖', '渡业剑']),
+      weapons: professionWeapons(['断空剑', '荒神锤', '蚀骨杖', '渡业剑'], [258, 358, 458, 558]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '官网资料未标明', rareAppearance: false },
       events: [],
     },
     {
       id: 'level-170', order: 7, label: '170 级武器', firstSeen: '2020',
-      weapons: professionWeapons(['澜霜剑', '弑厄锤', '螣渊杖', '羲曜剑']),
+      weapons: professionWeapons(['澜霜剑', '弑厄锤', '螣渊杖', '羲曜剑'], [259, 359, 459, 559]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '星品十阶', rareAppearance: false },
       events: [
         { date: '2020-12-08', text: '170 级武器开放时，武魂上限为星品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202012/877229.shtml' },
@@ -304,7 +309,7 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-180', order: 8, label: '180 级武器', firstSeen: '2022',
-      weapons: professionWeapons(['金阳剑', '陌煌锤', '珠虚杖', '炽鸾剑']),
+      weapons: professionWeapons(['金阳剑', '陌煌锤', '珠虚杖', '炽鸾剑'], [260, 360, 460, 560]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '昊品十阶', rareAppearance: true },
       events: [
         { date: '2024-03-05', text: '普通与同名·极武器的武魂上限开放至昊品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202403/949080.shtml' },
@@ -312,7 +317,7 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-190', order: 9, label: '190 级武器', firstSeen: '2022',
-      weapons: professionWeapons(['掣元剑', '陨霆锤', '蕴华杖', '御幽剑']),
+      weapons: professionWeapons(['掣元剑', '陨霆锤', '蕴华杖', '御幽剑'], [261, 361, 461, 561]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '昊品十阶', rareAppearance: true },
       events: [
         { date: '2024-03-05', text: '普通与同名·极武器的武魂上限开放至昊品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202403/949080.shtml' },
@@ -320,7 +325,7 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-200', order: 10, label: '200 级武器', firstSeen: '2023',
-      weapons: professionWeapons(['玹炀剑', '炙鸿锤', '珞滢杖', '鸢翎剑']),
+      weapons: professionWeapons(['玹炀剑', '炙鸿锤', '珞滢杖', '鸢翎剑'], [265, 365, 465, 565]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '寰品十阶', rareAppearance: true },
       events: [
         { date: '2026-03-03', text: '武魂上限开放至寰品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202603/982880.shtml' },
@@ -328,7 +333,7 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-220', order: 11, label: '220 级武器', firstSeen: '2024',
-      weapons: professionWeapons(['晟源剑', '弥臻斧', '洵烽杖', '虞琼剑']),
+      weapons: professionWeapons(['晟源剑', '弥臻斧', '洵烽杖', '虞琼剑'], [268, 368, 468, 568]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '昊品十阶', rareAppearance: true },
       events: [
         { date: '2024-05-07', text: '220 级武器开放时，武魂上限为昊品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202405/951820.shtml' },
@@ -336,7 +341,7 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-240', order: 12, label: '240 级武器', firstSeen: '2025',
-      weapons: professionWeapons(['凌阙剑', '晦明锤', '穹岳杖', '溯荒剑']),
+      weapons: professionWeapons(['凌阙剑', '晦明锤', '穹岳杖', '溯荒剑'], [270, 370, 470, 570]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '域品十阶', rareAppearance: true },
       events: [
         { date: '2025-05-07', text: '240 级武器开放时，武魂上限为域品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202505/969126.shtml' },
@@ -344,7 +349,7 @@ export const WEAPON_EVOLUTION = {
     },
     {
       id: 'level-260', order: 13, label: '260 级武器', firstSeen: '2026',
-      weapons: professionWeapons(['郦辰剑', '破擎锤', '沄曦杖', '丹枫剑']),
+      weapons: professionWeapons(['郦辰剑', '破擎锤', '沄曦杖', '丹枫剑'], [273, 373, 473, 573]),
       attributes: { system: '武魂武器', prefix: '四类主流前缀', soulCap: '寰品十阶', rareAppearance: true },
       events: [
         { date: '2026-05-07', text: '260 级武器开放时，武魂上限为寰品十阶。', url: 'https://xx.qq.com/webplat/info/news_version3/154/2233/3889/3890/m2701/202605/985548.shtml' },

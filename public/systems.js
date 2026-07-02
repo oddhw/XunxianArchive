@@ -212,7 +212,10 @@ function weaponEventsTemplate(events) {
 
 function professionWeaponTemplate(weapon) {
   return `<article class="profession-weapon">
-    <div class="profession-weapon-icon" data-kind="${escapeHtml(weapon.icon)}">${weaponIcon(weapon.icon)}</div>
+    <div class="profession-weapon-icon" data-kind="${escapeHtml(weapon.icon)}" title="客户端原始路径：${escapeHtml(weapon.iconSource)}">
+      <img src="${escapeHtml(weapon.image)}" alt="${escapeHtml(weapon.name)}道具图标" loading="lazy" onerror="this.parentElement.classList.add('icon-fallback');this.remove()">
+      <span class="weapon-icon-fallback" aria-hidden="true">${weaponIcon(weapon.icon)}</span>
+    </div>
     <div><span>${escapeHtml(weapon.profession)} · ${escapeHtml(weapon.type)}</span><h4>${highlight(weapon.name, state.detailQuery)}</h4></div>
   </article>`;
 }
@@ -232,7 +235,7 @@ function renderWeaponEvolution() {
   const stages = state.guide.stages.filter((stage) => !query || `${stage.label} ${stage.weapons.map((weapon) => `${weapon.profession} ${weapon.type} ${weapon.name}`).join(' ')} ${Object.values(stage.attributes).join(' ')}`.toLowerCase().includes(query));
   els.detailResultCount.textContent = `${stages.length} / ${state.guide.stageCount} 代`;
   if (!stages.length) return '<div class="detail-empty">没有找到对应等级、职业或武器名。</div>';
-  return `<div class="weapon-audit-note"><span>名称与属性模式</span><p>页面仅保留职业武器名称与可核验属性。当前图形用于区分职业类型；真实道具图标将从本机《新寻仙》客户端资源包核对提取。</p></div><div class="weapon-evolution">${stages.map((stage) => `
+  return `<div class="weapon-audit-note"><span>客户端真实图标</span><p>图标已从本机《新寻仙》客户端 gui.dpk 解包提取；悬停图标可查看原始包内路径。名称与属性仍按公告依据单独核验。</p></div><div class="weapon-evolution">${stages.map((stage) => `
     <section class="weapon-generation">
       <div class="generation-axis"><span>${String(stage.order).padStart(2, '0')}</span><i></i></div>
       <div class="generation-card">
