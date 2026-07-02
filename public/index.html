@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#081511">
+  <meta name="description" content="新寻仙版本公告全文检索与阅读工具">
+  <title>寻仙志 · 版本资料库</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230b211b'/%3E%3Cpath d='M17 38c12-1 18-8 21-22 7 8 9 18 3 25-6 8-17 8-24 3 12 1 20-3 25-11-7 6-14 8-25 5Z' fill='%237de3b2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="aurora aurora-one"></div>
+  <div class="aurora aurora-two"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="寻仙志首页">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><path d="M11 29c9-.7 15-7 18-19 6 6 8 15 3 21-5 7-14 8-21 4 10 0 17-3 21-10-6 5-12 6-21 4Z"/><path class="brand-spark" d="M35 12l1.5 3.5L40 17l-3.5 1.5L35 22l-1.5-3.5L30 17l3.5-1.5L35 12Z"/></svg>
+      </span>
+      <span><b>寻仙志</b><small>XUNXIAN ARCHIVE</small></span>
+    </a>
+    <div class="top-meta" aria-label="资料库状态">
+      <span class="status-dot"></span>
+      <span id="topStatus">正在读取资料库</span>
+    </div>
+    <div class="top-actions">
+      <a class="ghost-button" href="/">系统资料</a>
+      <a class="ghost-button source-link" href="https://xx.qq.com/webplat/info/news_version3/154/2233/3889/m2702/list_1.shtml" target="_blank" rel="noopener noreferrer">
+        官网原页
+        <svg viewBox="0 0 20 20"><path d="M7 4h9v9M16 4l-9 9"/></svg>
+      </a>
+      <button class="primary-button" id="syncButton" type="button">
+        <svg viewBox="0 0 20 20"><path d="M16 6V2m0 0h-4m4 0-3 3a6 6 0 1 0 2.4 6"/></svg>
+        <span>同步官网</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span> 新寻仙版本资料库</div>
+        <h1>每一次改动，<br><em>都能被找到。</em></h1>
+        <p>把散落在官网翻页里的版本公告，整理成可以全文搜索的清晰档案。</p>
+      </div>
+      <div class="search-shell">
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+          <input id="searchInput" type="search" autocomplete="off" placeholder="搜索技能、道具、副本或版本号…" aria-label="搜索公告">
+          <kbd>/</kbd>
+          <button id="clearSearch" class="clear-search" type="button" aria-label="清空搜索">
+            <svg viewBox="0 0 20 20"><path d="m6 6 8 8M14 6l-8 8"/></svg>
+          </button>
+        </div>
+        <div class="search-suggestions" aria-label="常用搜索">
+          <span>试试</span>
+          <button type="button" data-query="职业技能">职业技能</button>
+          <button type="button" data-query="副本">副本</button>
+          <button type="button" data-query="骑宠">骑宠</button>
+          <button type="button" data-query="8.2">8.2</button>
+        </div>
+      </div>
+      <div class="hero-stat">
+        <strong id="archiveCount">—</strong>
+        <span>篇公告<br>持续收录中</span>
+      </div>
+    </section>
+
+    <section class="archive-layout">
+      <aside class="filter-panel glass-panel">
+        <div class="panel-heading">
+          <span>筛选范围</span>
+          <button id="resetFilters" type="button">重置</button>
+        </div>
+
+        <div class="filter-group">
+          <label for="yearFilter">发布时间</label>
+          <div class="select-wrap">
+            <select id="yearFilter"><option value="all">全部年份</option></select>
+            <svg viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></svg>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <label>服务器</label>
+          <div class="server-options" id="serverOptions">
+            <button class="active" type="button" data-server="all"><span>全部</span><small id="allServerCount">0</small></button>
+            <button type="button" data-server="正式服"><span>正式服</span><small>0</small></button>
+            <button type="button" data-server="体验服"><span>体验服</span><small>0</small></button>
+            <button type="button" data-server="其他"><span>其他</span><small>0</small></button>
+          </div>
+        </div>
+
+        <div class="sync-card" id="syncCard">
+          <div class="sync-card-head">
+            <span class="sync-orb"><i></i></span>
+            <div><b>官网资料同步</b><small id="syncTime">尚未同步</small></div>
+          </div>
+          <p id="syncMessage">首次打开会自动整理最近公告。</p>
+          <div class="progress-track"><i id="syncProgress"></i></div>
+          <button id="fullSyncButton" type="button">同步全部历史公告</button>
+        </div>
+
+        <div class="source-note">
+          <svg viewBox="0 0 20 20"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M10 9v5M10 6.2v.1"/></svg>
+          <p>数据来自《新寻仙》腾讯官网，内容版权归原作者所有。</p>
+        </div>
+      </aside>
+
+      <section class="results-panel glass-panel">
+        <div class="results-toolbar">
+          <div>
+            <span class="section-kicker">公告索引</span>
+            <h2 id="resultHeading">全部版本公告</h2>
+          </div>
+          <div class="result-actions">
+            <span id="resultCount">0 条结果</span>
+            <div class="select-wrap compact">
+              <select id="sortSelect" aria-label="排序方式">
+                <option value="newest">最新发布</option>
+                <option value="oldest">最早发布</option>
+                <option value="relevance">相关度</option>
+              </select>
+              <svg viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="active-filters" id="activeFilters"></div>
+        <div class="result-list" id="resultList" aria-live="polite"></div>
+        <div class="pagination" id="pagination">
+          <button id="prevPage" type="button"><svg viewBox="0 0 20 20"><path d="m12 5-5 5 5 5"/></svg>上一页</button>
+          <span id="pageInfo">第 1 / 1 页</span>
+          <button id="nextPage" type="button">下一页<svg viewBox="0 0 20 20"><path d="m8 5 5 5-5 5"/></svg></button>
+        </div>
+      </section>
+
+      <aside class="reader-panel glass-panel" id="readerPanel">
+        <button class="reader-close" id="readerClose" type="button" aria-label="关闭正文">
+          <svg viewBox="0 0 20 20"><path d="m6 6 8 8M14 6l-8 8"/></svg>
+        </button>
+        <div class="reader-empty" id="readerEmpty">
+          <div class="empty-orbit">
+            <span></span><i></i>
+            <svg viewBox="0 0 48 48"><path d="M11 29c9-.7 15-7 18-19 6 6 8 15 3 21-5 7-14 8-21 4 10 0 17-3 21-10-6 5-12 6-21 4Z"/></svg>
+          </div>
+          <span>公告阅览</span>
+          <h3>从左侧选择一篇公告</h3>
+          <p>正文会在这里展开，搜索词也会自动标亮。</p>
+        </div>
+        <article class="reader-content" id="readerContent" hidden>
+          <div class="reader-meta">
+            <div class="reader-tags" id="readerTags"></div>
+            <time id="readerDate"></time>
+          </div>
+          <h2 id="readerTitle"></h2>
+          <div class="reader-divider"><span></span></div>
+          <div class="article-body" id="articleBody"></div>
+          <footer class="article-footer">
+            <span>以上内容同步自新寻仙官网</span>
+            <a id="originalLink" href="#" target="_blank" rel="noopener noreferrer">查看官网原文<svg viewBox="0 0 20 20"><path d="M7 4h9v9M16 4l-9 9"/></svg></a>
+          </footer>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <div class="mobile-reader-backdrop" id="readerBackdrop"></div>
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

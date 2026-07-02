@@ -1,0 +1,16 @@
+{
+  "name": "xunxian-archive",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "新寻仙版本公告全文检索与阅读器",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "sync": "node server.js --sync-all",
+    "check": "node --check server.js && node --check public/app.js && node --check public/systems.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

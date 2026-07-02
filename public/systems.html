@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07110e">
+  <meta name="description" content="寻仙1系统迭代与材料获取资料库">
+  <title>寻仙志 · 系统资料库</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230b211b'/%3E%3Cpath d='M17 38c12-1 18-8 21-22 7 8 9 18 3 25-6 8-17 8-24 3 12 1 20-3 25-11-7 6-14 8-25 5Z' fill='%237de3b2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/systems.css">
+</head>
+<body>
+  <div class="noise"></div>
+  <div class="glow glow-a"></div>
+  <div class="glow glow-b"></div>
+
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-symbol">
+        <svg viewBox="0 0 48 48"><path d="M11 29c9-.7 15-7 18-19 6 6 8 15 3 21-5 7-14 8-21 4 10 0 17-3 21-10-6 5-12 6-21 4Z"/><path class="spark" d="M35 12l1.5 3.5L40 17l-3.5 1.5L35 22l-1.5-3.5L30 17l3.5-1.5L35 12Z"/></svg>
+      </span>
+      <span><strong>寻仙志</strong><small>寻仙 1 · 系统资料库</small></span>
+    </a>
+    <nav class="site-nav" aria-label="主导航">
+      <a class="active" href="/">系统资料</a>
+      <a href="/updates">版本公告</a>
+    </nav>
+    <div class="header-state"><i></i><span id="headerState">正在整理资料</span></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-label"><span>ONLY XUNXIAN 1</span> 只收录《寻仙1》</div>
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <h1>把十八年的养成脉络，<br><em>一层层理清楚。</em></h1>
+          <p>系统怎么改过、材料从哪里来，都从历年官网公告中汇总，并保留出处。</p>
+        </div>
+        <div class="hero-search-wrap">
+          <div class="hero-search">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+            <input id="systemSearch" type="search" placeholder="搜索系统，例如：武器、宝宝、心法…" autocomplete="off">
+            <kbd>/</kbd>
+          </div>
+          <div class="quick-links">
+            <span>常用</span>
+            <button data-system="weapon">武器</button>
+            <button data-system="equipment">装备</button>
+            <button data-system="attendant-pet">宝宝</button>
+            <button data-system="mental">心法</button>
+            <button data-system="yin-yang-jade">阴阳玉</button>
+          </div>
+        </div>
+      </div>
+      <div class="hero-metrics">
+        <div><strong id="systemCount">18</strong><span>套系统分类</span></div>
+        <div><strong id="updateCount">—</strong><span>条迭代线索</span></div>
+        <div><strong id="materialCount">—</strong><span>条材料来源</span></div>
+        <div class="metric-source"><span>资料跨度</span><strong>2008—2026</strong></div>
+      </div>
+    </section>
+
+    <section class="library">
+      <aside class="category-rail">
+        <div class="rail-title"><span>资料分类</span><small id="filteredCount">18 个系统</small></div>
+        <div id="groupFilters" class="group-filters"></div>
+        <div class="rail-note">
+          <span class="rail-note-icon">校</span>
+          <div><strong>原文可追溯</strong><p>每一条汇总都能回到对应的官网更新公告。</p></div>
+        </div>
+      </aside>
+
+      <section class="system-stage">
+        <div class="stage-heading">
+          <div><span>GAME SYSTEMS</span><h2 id="stageTitle">全部系统</h2></div>
+          <p>选择一个系统，查看它的版本演进和材料获取方式。</p>
+        </div>
+        <div class="system-grid" id="systemGrid" aria-live="polite"></div>
+        <div class="empty-state" id="emptyState" hidden>
+          <span>没有找到对应系统</span>
+          <p>试试“法宝”“装备”或“骑宠”等关键词。</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <aside class="detail-drawer" id="detailDrawer" aria-label="系统详情" aria-hidden="true">
+    <div class="drawer-topbar">
+      <span>系统资料详情</span>
+      <button id="closeDrawer" type="button" aria-label="关闭"><svg viewBox="0 0 20 20"><path d="m6 6 8 8M14 6l-8 8"/></svg></button>
+    </div>
+    <div class="drawer-hero">
+      <div class="drawer-icon" id="drawerIcon"></div>
+      <div class="drawer-title"><span id="drawerGroup"></span><h2 id="drawerName"></h2><p id="drawerDescription"></p></div>
+    </div>
+    <div class="drawer-stats">
+      <div><strong id="drawerUpdates">0</strong><span>篇相关更新</span></div>
+      <div><strong id="drawerMaterials">0</strong><span>条材料线索</span></div>
+      <div><strong id="drawerLatest">—</strong><span>最近更新</span></div>
+    </div>
+    <div class="drawer-tabs" role="tablist">
+      <button class="active" id="timelineTab" data-section="timeline" role="tab" type="button"><span>迭代记录</span><small>系统如何变化</small></button>
+      <button id="materialsTab" data-section="materials" role="tab" type="button"><span>材料获取</span><small>掉落 · 兑换 · 合成</small></button>
+    </div>
+    <div class="detail-tools">
+      <div class="detail-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg><input id="detailSearch" type="search" placeholder="在当前系统内查找…"></div>
+      <span id="detailResultCount"></span>
+    </div>
+    <div class="detail-list" id="detailList"></div>
+    <div class="detail-pagination" id="detailPagination">
+      <button id="detailPrev" type="button">上一页</button><span id="detailPage"></span><button id="detailNext" type="button">下一页</button>
+    </div>
+  </aside>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+  <script type="module" src="/systems.js"></script>
+</body>
+</html>

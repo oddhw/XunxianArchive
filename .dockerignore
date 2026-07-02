@@ -1,0 +1,7 @@
+.git
+.gitignore
+deploy
+scripts
+README.md
+data/*.tmp
+npm-debug.log
