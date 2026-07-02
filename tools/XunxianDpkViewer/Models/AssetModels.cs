@@ -71,6 +71,7 @@ public sealed class AssetItemViewModel : INotifyPropertyChanged
 
 public sealed record PmfMesh(
     IReadOnlyList<System.Numerics.Vector3> Vertices,
+    IReadOnlyList<System.Numerics.Vector2> TextureCoordinates,
     IReadOnlyList<ushort> Indices,
     uint Version,
     uint VertexFlags,
