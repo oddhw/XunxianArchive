@@ -1,4 +1,5 @@
 using System.Text;
+using XunxianDpkViewer.Models;
 
 namespace XunxianDpkViewer.Core;
 
@@ -30,7 +31,22 @@ public static class SelfTest
                 throw new InvalidDataException("OGG 文件头不正确。");
             return "OGG 文件头正确";
         });
-        CheckFile(report, root, "obj.dpk", ".pmf", data => DescribeMesh(PmfParser.Parse(data)));
+        CheckFile(report, root, "obj.dpk", ".pmf", data =>
+        {
+            PmfMesh mesh = PmfParser.Parse(data);
+            string target = Path.Combine(Path.GetTempPath(), "xunxian-dpk-self-test.obj");
+            try
+            {
+                ObjExporter.Export(mesh, target, "self_test");
+                if (!File.Exists(target) || new FileInfo(target).Length == 0)
+                    throw new InvalidDataException("OBJ 导出结果为空。");
+            }
+            finally
+            {
+                File.Delete(target);
+            }
+            return DescribeMesh(mesh) + "，OBJ 导出正确";
+        });
         CheckFile(report, root, "cha.dpk", ".pmf", data => DescribeMesh(PmfParser.Parse(data)));
         report.AppendLine("SELF-TEST PASSED");
         return report.ToString();

@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="寻仙 DPK 资源浏览器">
 
-    <Grid Background="#09131A" Loaded="MainWindow_Loaded">
+    <Grid Background="#09131A" RequestedTheme="Dark" Loaded="MainWindow_Loaded">
         <Grid.RowDefinitions>
             <RowDefinition Height="48" />
             <RowDefinition Height="*" />
@@ -25,26 +25,31 @@
                     <TextBlock Text="WinUI 3" Foreground="#72E5C1" FontSize="11" />
                 </Border>
             </StackPanel>
-            <TextBlock Grid.Column="2" x:Name="ArchiveSummaryText" Margin="0,0,150,0"
+            <TextBlock Grid.Column="2" x:Name="ArchiveSummaryText" Margin="0,0,16,0"
                        VerticalAlignment="Center" Foreground="#78909C" FontSize="12" />
         </Grid>
 
         <NavigationView x:Name="CategoryNavigation"
                         Grid.Row="1"
-                        PaneDisplayMode="LeftCompact"
+                        PaneDisplayMode="Left"
+                        IsPaneOpen="True"
+                        OpenPaneLength="188"
+                        CompactPaneLength="56"
+                        Background="#091820"
+                        Foreground="#DCE9EE"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
                         IsPaneToggleButtonVisible="False"
                         SelectionChanged="CategoryNavigation_SelectionChanged">
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="ImageNavigationItem" Content="图标与贴图" Tag="image" IsSelected="True">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xEB9F;" /></NavigationViewItem.Icon>
+                <NavigationViewItem x:Name="ImageNavigationItem" Content="图标与贴图" Tag="image" IsSelected="True" Foreground="#DCE9EE">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xEB9F;" Foreground="#9FD8CB" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="声音" Tag="sound">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D6;" /></NavigationViewItem.Icon>
+                <NavigationViewItem Content="声音" Tag="sound" Foreground="#DCE9EE">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D6;" Foreground="#9FD8CB" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="模型" Tag="model">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE809;" /></NavigationViewItem.Icon>
+                <NavigationViewItem x:Name="ModelNavigationItem" Content="模型" Tag="model" Foreground="#DCE9EE">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE809;" Foreground="#9FD8CB" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
@@ -99,6 +104,7 @@
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="10">
                             <ProgressRing x:Name="BusyRing" Width="18" Height="18" IsActive="False" />
                             <TextBlock x:Name="StatusText" Foreground="#91A7B3" Text="等待载入资源" />
+                            <TextBlock x:Name="CurrentPathText" Foreground="#58717D" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="420" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
                             <Button x:Name="PreviousPageButton" Click="PreviousPageButton_Click" IsEnabled="False" ToolTipService.ToolTip="上一页">
@@ -113,13 +119,13 @@
                         </StackPanel>
                     </Grid>
 
-                    <Grid Grid.Row="2" ColumnSpacing="16">
+                    <Grid x:Name="WorkspaceGrid" Grid.Row="2" ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.35*" MinWidth="440" />
-                            <ColumnDefinition Width="1*" MinWidth="360" />
+                            <ColumnDefinition x:Name="AssetListColumn" Width="1.35*" MinWidth="340" />
+                            <ColumnDefinition x:Name="PreviewColumn" Width="1*" MinWidth="360" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Background="#0D1A22" BorderBrush="#1E3440" BorderThickness="1" CornerRadius="16" Padding="10">
+                        <Border x:Name="AssetBrowserPanel" Background="#0D1A22" BorderBrush="#1E3440" BorderThickness="1" CornerRadius="16" Padding="10">
                             <Grid>
                                 <GridView x:Name="ImageGrid"
                                           SelectionChanged="Asset_SelectionChanged"
@@ -215,19 +221,36 @@
                                         </Border>
                                         <ContentControl x:Name="AudioPlayerHost" Grid.Row="1" Margin="0,12,0,0" />
                                     </Grid>
-                                    <ContentControl x:Name="ModelPreviewHost" Visibility="Collapsed" />
+                                    <ContentControl x:Name="ModelPreviewHost"
+                                                    Visibility="Collapsed"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    VerticalContentAlignment="Stretch" />
                                 </Grid>
 
                                 <StackPanel Grid.Row="1" Margin="2,16,2,2" Spacing="8">
                                     <TextBlock x:Name="SelectedNameText" Text="尚未选择资源" Foreground="#EEF5F7" FontWeight="SemiBold" FontSize="16" TextWrapping="Wrap" />
                                     <TextBlock x:Name="SelectedPathText" Text="从左侧选择图标、声音或模型" Foreground="#78909C" FontSize="11" TextWrapping="Wrap" MaxHeight="48" />
                                     <TextBlock x:Name="SelectedMetadataText" Foreground="#72A6A0" FontSize="11" TextWrapping="Wrap" />
-                                    <Button x:Name="ExportSelectedButton" Click="ExportSelectedButton_Click" IsEnabled="False" HorizontalAlignment="Left" Margin="0,4,0,0">
-                                        <StackPanel Orientation="Horizontal" Spacing="7">
-                                            <FontIcon Glyph="&#xE896;" FontSize="14" />
-                                            <TextBlock Text="导出这个资源" />
-                                        </StackPanel>
-                                    </Button>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                        <Button x:Name="ExportSelectedButton" Click="ExportSelectedButton_Click" IsEnabled="False">
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <FontIcon Glyph="&#xE896;" FontSize="14" />
+                                                <TextBlock Text="导出原始资源" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="ExportModelButton" Click="ExportModelButton_Click" IsEnabled="False" Visibility="Collapsed">
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <FontIcon Glyph="&#xE74C;" FontSize="14" />
+                                                <TextBlock Text="导出 OBJ 模型" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="ExpandModelButton" Click="ExpandModelButton_Click" Visibility="Collapsed">
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <FontIcon Glyph="&#xE740;" FontSize="14" />
+                                                <TextBlock x:Name="ExpandModelButtonText" Text="放大模型预览" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -235,5 +258,27 @@
                 </Grid>
             </NavigationView.Content>
         </NavigationView>
+
+        <Border x:Name="PathSetupPanel"
+                Grid.Row="1"
+                Visibility="Collapsed"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Width="520"
+                Padding="34"
+                Background="#F0182831"
+                BorderBrush="#355663"
+                BorderThickness="1"
+                CornerRadius="20">
+            <StackPanel Spacing="14" HorizontalAlignment="Stretch">
+                <Border Width="64" Height="64" CornerRadius="18" Background="#153E3A" HorizontalAlignment="Center">
+                    <FontIcon Glyph="&#xE8B7;" FontSize="28" Foreground="#72E5C1" />
+                </Border>
+                <TextBlock Text="先选择《新寻仙》客户端目录" FontSize="22" FontWeight="SemiBold" Foreground="#F2F7F8" TextAlignment="Center" />
+                <TextBlock Text="可以选择游戏安装目录，也可以直接选择 res 目录。程序会记住这个位置，换电脑后首次启动会重新提示。"
+                           Foreground="#91A7B3" TextWrapping="Wrap" TextAlignment="Center" />
+                <Button Content="选择客户端目录" Click="ChooseInitialPathButton_Click" HorizontalAlignment="Center" Padding="22,10" />
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>

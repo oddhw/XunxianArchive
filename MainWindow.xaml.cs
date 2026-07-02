@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window
     private int _currentPage;
     private int _thumbnailGeneration;
     private bool _isBusy;
+    private bool _modelExpanded;
 
     public MainWindow()
     {
@@ -40,9 +41,8 @@ public sealed partial class MainWindow : Window
         AudioPlayerHost.Content = _audioPlayer;
         _modelPreview = new ModelPreviewControl();
         ModelPreviewHost.Content = _modelPreview;
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(TitleBarDragRegion);
-        AppWindow.Resize(new SizeInt32(1480, 900));
+        ExtendsContentIntoTitleBar = false;
+        AppWindow.Resize(new SizeInt32(1600, 960));
 
         ImageGrid.ItemsSource = _items;
         AssetList.ItemsSource = _items;
@@ -63,16 +63,27 @@ public sealed partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        string[] candidates =
+        string? explicitArgument = Environment.GetCommandLineArgs()
+            .FirstOrDefault(argument => argument.StartsWith("--resource-folder=", StringComparison.OrdinalIgnoreCase));
+        string? explicitFolder = explicitArgument is null
+            ? null
+            : explicitArgument[(explicitArgument.IndexOf('=') + 1)..].Trim('"');
+        if (!string.IsNullOrWhiteSpace(explicitFolder))
         {
-            @"D:\Program Files\腾讯游戏\新寻仙\res",
-            @"C:\Program Files\腾讯游戏\新寻仙\res"
-        };
-        string? detected = candidates.FirstOrDefault(path => File.Exists(System.IO.Path.Combine(path, "gui.dpk")));
-        if (detected is not null)
-            await LoadResourceFolderAsync(detected);
-        else
-            SetStatus("请选择《新寻仙》res 资源目录，或打开一个 DPK 文件");
+            await LoadResourceFolderAsync(explicitFolder);
+            return;
+        }
+
+        string? rememberedFolder = UserPreferences.LoadResourceFolder();
+        if (!string.IsNullOrWhiteSpace(rememberedFolder) &&
+            File.Exists(System.IO.Path.Combine(rememberedFolder, "gui.dpk")))
+        {
+            await LoadResourceFolderAsync(rememberedFolder);
+            return;
+        }
+
+        PathSetupPanel.Visibility = Visibility.Visible;
+        SetStatus("首次使用，请选择《新寻仙》客户端或 res 目录");
     }
 
     private async Task LoadResourceFolderAsync(string folder)
@@ -81,7 +92,11 @@ public sealed partial class MainWindow : Window
         SetBusy(true, "正在读取 DPK 索引…");
         try
         {
-            await Task.Run(() => _workspace.OpenClientResourceFolder(folder));
+            string resourceFolder = ResolveResourceFolder(folder);
+            await Task.Run(() => _workspace.OpenClientResourceFolder(resourceFolder));
+            UserPreferences.SaveResourceFolder(resourceFolder);
+            CurrentPathText.Text = resourceFolder;
+            PathSetupPanel.Visibility = Visibility.Collapsed;
             AfterWorkspaceLoaded();
         }
         catch (Exception ex)
@@ -101,6 +116,8 @@ public sealed partial class MainWindow : Window
         try
         {
             await Task.Run(() => _workspace.OpenSingleArchive(path));
+            CurrentPathText.Text = path;
+            PathSetupPanel.Visibility = Visibility.Collapsed;
             AfterWorkspaceLoaded();
         }
         catch (Exception ex)
@@ -122,6 +139,15 @@ public sealed partial class MainWindow : Window
         BatchExportButton.IsEnabled = true;
         _currentPage = 0;
         ApplyFilter();
+    }
+
+    private static string ResolveResourceFolder(string selectedFolder)
+    {
+        string fullPath = System.IO.Path.GetFullPath(selectedFolder);
+        string nestedRes = System.IO.Path.Combine(fullPath, "res");
+        if (File.Exists(System.IO.Path.Combine(fullPath, "gui.dpk"))) return fullPath;
+        if (File.Exists(System.IO.Path.Combine(nestedRes, "gui.dpk"))) return nestedRes;
+        throw new DirectoryNotFoundException("所选位置不是有效的新寻仙客户端目录：没有找到 res\\gui.dpk。");
     }
 
     private void ApplyFilter()
@@ -181,6 +207,7 @@ public sealed partial class MainWindow : Window
         if (sender is not ListViewBase list || list.SelectedItem is not AssetItemViewModel item) return;
         _selectedAsset = item.Asset;
         ExportSelectedButton.IsEnabled = true;
+        ExportModelButton.IsEnabled = item.Asset.Kind == AssetKind.Model;
         SelectedNameText.Text = item.Asset.Name;
         SelectedPathText.Text = item.Asset.DisplayPath;
         SelectedMetadataText.Text = "正在读取…";
@@ -246,7 +273,13 @@ public sealed partial class MainWindow : Window
         return bitmap;
     }
 
-    private async void OpenFolderButton_Click(object sender, RoutedEventArgs e)
+    private async void OpenFolderButton_Click(object sender, RoutedEventArgs e) =>
+        await PickAndLoadResourceFolderAsync();
+
+    private async void ChooseInitialPathButton_Click(object sender, RoutedEventArgs e) =>
+        await PickAndLoadResourceFolderAsync();
+
+    private async Task PickAndLoadResourceFolderAsync()
     {
         var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
         picker.FileTypeFilter.Add("*");
@@ -283,6 +316,50 @@ public sealed partial class MainWindow : Window
         {
             SetBusy(false);
         }
+    }
+
+    private async void ExportModelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedAsset?.Kind != AssetKind.Model || _isBusy) return;
+        var picker = new FileSavePicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = System.IO.Path.GetFileNameWithoutExtension(_selectedAsset.Name)
+        };
+        picker.FileTypeChoices.Add("Wavefront OBJ 模型", new List<string> { ".obj" });
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+        StorageFile? file = await picker.PickSaveFileAsync();
+        if (file is null) return;
+
+        SetBusy(true, "正在转换并导出 OBJ 模型…");
+        try
+        {
+            AssetEntry asset = _selectedAsset;
+            await Task.Run(() =>
+            {
+                PmfMesh mesh = PmfParser.Parse(_workspace.Extract(asset));
+                ObjExporter.Export(mesh, file.Path, System.IO.Path.GetFileNameWithoutExtension(asset.Name));
+            });
+            SetStatus($"OBJ 模型已导出：{file.Path}");
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("OBJ 导出失败", ex.Message);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void ExpandModelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentKind != AssetKind.Model) return;
+        _modelExpanded = !_modelExpanded;
+        AssetBrowserPanel.Visibility = _modelExpanded ? Visibility.Collapsed : Visibility.Visible;
+        AssetListColumn.MinWidth = _modelExpanded ? 0 : 340;
+        AssetListColumn.Width = _modelExpanded ? new GridLength(0) : new GridLength(380);
+        ExpandModelButtonText.Text = _modelExpanded ? "恢复模型列表" : "放大模型预览";
     }
 
     private async void BatchExportButton_Click(object sender, RoutedEventArgs e)
@@ -356,23 +433,33 @@ public sealed partial class MainWindow : Window
     {
         bool images = _currentKind == AssetKind.Image;
         bool sounds = _currentKind == AssetKind.Sound;
+        bool models = _currentKind == AssetKind.Model;
         PageTitleText.Text = images ? "图标与贴图" : sounds ? "声音" : "模型";
         PageDescriptionText.Text = images
             ? "浏览 GUI 图标、装备图和 DDS 场景贴图"
             : sounds
                 ? "直接试听 OGG 音乐、环境音与 WAV 音效"
-                : "拖拽旋转和缩放客户端 PMF 三维线框";
+                : "大尺寸实体预览 PMF 模型，并可转换导出为 OBJ";
         SearchBox.PlaceholderText = images ? "搜索图标名称或路径" : sounds ? "搜索音效、音乐或路径" : "搜索模型名称或路径";
         ImageGrid.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
         AssetList.Visibility = images ? Visibility.Collapsed : Visibility.Visible;
         ImagePreviewPanel.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
         SoundPreviewPanel.Visibility = sounds ? Visibility.Visible : Visibility.Collapsed;
-        ModelPreviewHost.Visibility = _currentKind == AssetKind.Model ? Visibility.Visible : Visibility.Collapsed;
+        ModelPreviewHost.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
+        ExportModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
+        ExpandModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
+        _modelExpanded = false;
+        AssetBrowserPanel.Visibility = Visibility.Visible;
+        AssetListColumn.MinWidth = models ? 340 : 440;
+        AssetListColumn.Width = models ? new GridLength(380) : new GridLength(1.35, GridUnitType.Star);
+        PreviewColumn.Width = models ? new GridLength(1, GridUnitType.Star) : new GridLength(1, GridUnitType.Star);
+        ExpandModelButtonText.Text = "放大模型预览";
         if (!sounds) _mediaPlayer.Pause();
         if (_currentKind != AssetKind.Model) _modelPreview.SetMesh(null);
         PreviewImage.Source = null;
         _selectedAsset = null;
         ExportSelectedButton.IsEnabled = false;
+        ExportModelButton.IsEnabled = false;
         SelectedNameText.Text = "尚未选择资源";
         SelectedPathText.Text = images ? "从左侧选择一张图像" : sounds ? "从左侧选择一个声音" : "从左侧选择一个 PMF 模型";
         SelectedMetadataText.Text = string.Empty;

@@ -24,7 +24,10 @@ public static class PmfParser
         int positionOffset = 48;
         long positionBytes = (long)vertexCount * 12;
         long indexBytes = (long)triangleCount * 6;
-        if (positionOffset + positionBytes > data.Length || indexBytes > data.Length - positionOffset)
+        long uvBytes = (long)vertexCount * uvChannels * 8;
+        long vertexDataBytes = data.Length - positionOffset - indexBytes - uvBytes;
+        if (positionOffset + positionBytes > data.Length || indexBytes > data.Length - positionOffset ||
+            vertexDataBytes < positionBytes || vertexDataBytes % vertexCount != 0)
             throw new InvalidDataException("PMF 顶点或索引数据不完整。");
 
         var vertices = new Vector3[vertexCount];
@@ -37,6 +40,18 @@ public static class PmfParser
                 ReadSingle(data, offset + 8));
         }
 
+        var textureCoordinates = Array.Empty<Vector2>();
+        if (uvChannels > 0)
+        {
+            int uvOffset = checked(positionOffset + (int)vertexDataBytes);
+            textureCoordinates = new Vector2[vertexCount];
+            for (int i = 0; i < textureCoordinates.Length; i++)
+            {
+                int offset = uvOffset + i * 8;
+                textureCoordinates[i] = new Vector2(ReadSingle(data, offset), ReadSingle(data, offset + 4));
+            }
+        }
+
         // 寻仙 PMF 的三角形索引固定置于文件尾部。这样既兼容静态模型，
         // 也兼容带骨骼权重、颜色、法线和多 UV 通道的顶点声明。
         int indexOffset = checked(data.Length - (int)indexBytes);
@@ -47,7 +62,7 @@ public static class PmfParser
         if (indices.Any(index => index >= vertexCount))
             throw new InvalidDataException("PMF 索引超出顶点范围。");
 
-        return new PmfMesh(vertices, indices, version, vertexFlags, uvChannels, triangleCount);
+        return new PmfMesh(vertices, textureCoordinates, indices, version, vertexFlags, uvChannels, triangleCount);
     }
 
     private static uint ReadUInt(ReadOnlySpan<byte> data, int offset) =>
