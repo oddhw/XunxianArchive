@@ -8,7 +8,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "sync": "node server.js --sync-all",
-    "check": "node --check server.js && node --check public/app.js && node --check public/systems.js"
+    "check": "node --check server.js && node --check knowledge.js && node --check public/app.js && node --check public/systems.js"
   },
   "engines": {
     "node": ">=20"

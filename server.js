@@ -2,6 +2,7 @@ import http from 'node:http';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SYSTEM_GUIDES } from './knowledge.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -53,6 +54,7 @@ let syncState = {
 };
 
 let systemCache = [];
+let guideCache = new Map();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -219,6 +221,76 @@ function buildSystemCache() {
       materials,
     };
   });
+  buildGuideCache();
+}
+
+function materialEvidence(material) {
+  const occurrences = [];
+  for (const item of announcements) {
+    if (!item.text.includes(material.name)) continue;
+    const chunks = articleChunks(item.text).filter((chunk) => chunk.includes(material.name));
+    for (const chunk of chunks) {
+      occurrences.push({
+        date: item.date,
+        year: item.year,
+        summary: compactSnippet(chunk, 300),
+        sourceUrl: item.url,
+      });
+    }
+  }
+  occurrences.sort((a, b) => a.date.localeCompare(b.date));
+  const first = occurrences[0] || null;
+  const changes = [];
+  const seen = new Set();
+  for (const event of occurrences) {
+    if (!hasAny(event.summary, [...ITERATION_WORDS, ...MATERIAL_WORDS]) && occurrences.length > 1) continue;
+    const key = `${event.year}-${event.summary.replace(/[\s\d，。；：、（）()]/g, '').slice(0, 80)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    changes.push(event);
+  }
+  const selectedChanges = (changes.length ? changes : occurrences).slice(-8).reverse();
+  return {
+    ...material,
+    firstSeenYear: first?.year || '待考证',
+    firstSeenDate: first?.date || null,
+    lastChanged: selectedChanges[0]?.date || first?.date || null,
+    evidenceCount: occurrences.length,
+    changes: selectedChanges,
+  };
+}
+
+function buildGuideCache() {
+  guideCache = new Map();
+  for (const system of systemCache) {
+    const blueprint = SYSTEM_GUIDES[system.id];
+    if (!blueprint) continue;
+    const materials = blueprint.materials.map(materialEvidence);
+    const stages = blueprint.stages.map((stage, index) => ({
+      ...stage,
+      order: index + 1,
+      materials: materials.filter((material) => material.stage === stage.id),
+    }));
+    guideCache.set(system.id, {
+      system: {
+        id: system.id,
+        name: system.name,
+        group: system.group,
+        icon: system.icon,
+        color: system.color,
+        description: system.description,
+        latestDate: system.latestDate,
+      },
+      stageCount: stages.length,
+      materialCount: materials.length,
+      stages,
+      materials,
+    });
+  }
+}
+
+function getSystemGuide(id) {
+  return guideCache.get(id) || null;
 }
 
 function listSystems(params) {
@@ -229,7 +301,14 @@ function listSystems(params) {
     if (!query) return true;
     const text = `${system.name} ${system.short} ${system.description} ${system.keywords.join(' ')}`.toLowerCase();
     return text.includes(query);
-  }).map(({ timeline, materials, ...system }) => system);
+  }).map(({ timeline, materials, ...system }) => {
+    const guide = guideCache.get(system.id);
+    return {
+      ...system,
+      stageCount: guide?.stageCount || 0,
+      materialItemCount: guide?.materialCount || 0,
+    };
+  });
   const groups = [...new Set(SYSTEM_DEFINITIONS.map((item) => item.group))];
   return { systems, groups, count: systems.length };
 }
@@ -568,6 +647,11 @@ async function handle(request, response) {
   try {
     if (url.pathname === '/api/health' && request.method === 'GET') return sendJson(response, 200, { ok: true, announcements: announcements.length });
     if (url.pathname === '/api/systems' && request.method === 'GET') return sendJson(response, 200, listSystems(url.searchParams));
+    if (url.pathname.match(/^\/api\/guides\/[a-z0-9-]+$/) && request.method === 'GET') {
+      const id = url.pathname.split('/').pop();
+      const guide = getSystemGuide(id);
+      return guide ? sendJson(response, 200, guide) : sendJson(response, 404, { error: '没有找到这个系统指南' });
+    }
     if (url.pathname.match(/^\/api\/systems\/[a-z0-9-]+$/) && request.method === 'GET') {
       const id = url.pathname.split('/').pop();
       const detail = getSystemDetail(id, url.searchParams);

@@ -8,6 +8,7 @@
   <title>寻仙志 · 系统资料库</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230b211b'/%3E%3Cpath d='M17 38c12-1 18-8 21-22 7 8 9 18 3 25-6 8-17 8-24 3 12 1 20-3 25-11-7 6-14 8-25 5Z' fill='%237de3b2'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/systems.css">
+  <link rel="stylesheet" href="/guides.css">
 </head>
 <body>
   <div class="noise"></div>
@@ -54,8 +55,8 @@
       </div>
       <div class="hero-metrics">
         <div><strong id="systemCount">18</strong><span>套系统分类</span></div>
-        <div><strong id="updateCount">—</strong><span>条迭代线索</span></div>
-        <div><strong id="materialCount">—</strong><span>条材料来源</span></div>
+        <div><strong id="updateCount">—</strong><span>个养成阶段</span></div>
+        <div><strong id="materialCount">—</strong><span>种核心材料</span></div>
         <div class="metric-source"><span>资料跨度</span><strong>2008—2026</strong></div>
       </div>
     </section>
@@ -95,22 +96,19 @@
       <div class="drawer-title"><span id="drawerGroup"></span><h2 id="drawerName"></h2><p id="drawerDescription"></p></div>
     </div>
     <div class="drawer-stats">
-      <div><strong id="drawerUpdates">0</strong><span>篇相关更新</span></div>
-      <div><strong id="drawerMaterials">0</strong><span>条材料线索</span></div>
+      <div><strong id="drawerStages">0</strong><span>个养成阶段</span></div>
+      <div><strong id="drawerMaterials">0</strong><span>种核心材料</span></div>
       <div><strong id="drawerLatest">—</strong><span>最近更新</span></div>
     </div>
     <div class="drawer-tabs" role="tablist">
-      <button class="active" id="timelineTab" data-section="timeline" role="tab" type="button"><span>迭代记录</span><small>系统如何变化</small></button>
-      <button id="materialsTab" data-section="materials" role="tab" type="button"><span>材料获取</span><small>掉落 · 兑换 · 合成</small></button>
+      <button class="active" id="routeTab" data-section="route" role="tab" type="button"><span>养成路线</span><small>阶段 · 用途 · 数量</small></button>
+      <button id="materialsTab" data-section="materials" role="tab" type="button"><span>材料图鉴</span><small>来源 · 首见 · 改动</small></button>
     </div>
     <div class="detail-tools">
-      <div class="detail-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg><input id="detailSearch" type="search" placeholder="在当前系统内查找…"></div>
+      <div class="detail-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg><input id="detailSearch" type="search" placeholder="查找材料名称或用途…"></div>
       <span id="detailResultCount"></span>
     </div>
     <div class="detail-list" id="detailList"></div>
-    <div class="detail-pagination" id="detailPagination">
-      <button id="detailPrev" type="button">上一页</button><span id="detailPage"></span><button id="detailNext" type="button">下一页</button>
-    </div>
   </aside>
 
   <div class="toast-wrap" id="toastWrap"></div>
