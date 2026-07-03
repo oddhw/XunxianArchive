@@ -94,28 +94,29 @@
 
                     <Grid Grid.Row="1" Margin="0,18,0,14">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="420" />
+                            <ColumnDefinition Width="360" />
+                            <ColumnDefinition Width="190" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <AutoSuggestBox x:Name="SearchBox"
                                         PlaceholderText="搜索文件名或资源路径"
                                         TextChanged="SearchBox_TextChanged" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="10">
+                        <ComboBox x:Name="SortComboBox"
+                                  Grid.Column="1"
+                                  Margin="10,0,0,0"
+                                  SelectedIndex="0"
+                                  SelectionChanged="SortComboBox_SelectionChanged"
+                                  ToolTipService.ToolTip="排序方式">
+                            <ComboBoxItem Content="名称：自然升序" />
+                            <ComboBoxItem Content="名称：自然降序" />
+                            <ComboBoxItem Content="类型，再按名称" />
+                            <ComboBoxItem Content="包内完整路径" />
+                            <ComboBoxItem Content="DPK 原始顺序" />
+                        </ComboBox>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="10">
                             <ProgressRing x:Name="BusyRing" Width="18" Height="18" IsActive="False" />
                             <TextBlock x:Name="StatusText" Foreground="#91A7B3" Text="等待载入资源" />
                             <TextBlock x:Name="CurrentPathText" Foreground="#58717D" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="420" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="PreviousPageButton" Click="PreviousPageButton_Click" IsEnabled="False" ToolTipService.ToolTip="上一页">
-                                <FontIcon Glyph="&#xE76B;" />
-                            </Button>
-                            <Border MinWidth="96" Padding="12,7" Background="#12232C" CornerRadius="8">
-                                <TextBlock x:Name="PageIndicatorText" Text="0 / 0" TextAlignment="Center" Foreground="#C4D4DC" />
-                            </Border>
-                            <Button x:Name="NextPageButton" Click="NextPageButton_Click" IsEnabled="False" ToolTipService.ToolTip="下一页">
-                                <FontIcon Glyph="&#xE76C;" />
-                            </Button>
                         </StackPanel>
                     </Grid>
 
@@ -154,17 +155,29 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
-                                    <Border Background="#10232C" CornerRadius="9" Padding="12,8" Margin="0,0,0,8">
-                                        <TextBlock x:Name="CurrentFolderText"
-                                                   Text="尚未选择目录"
-                                                   Foreground="#9FB5BF"
-                                                   FontSize="11"
-                                                   TextTrimming="CharacterEllipsis" />
+                                    <Border Background="#10232C" CornerRadius="9" Padding="8,5" Margin="0,0,0,8">
+                                        <Grid ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="CurrentFolderText"
+                                                       VerticalAlignment="Center"
+                                                       Text="尚未选择目录"
+                                                       Foreground="#9FB5BF"
+                                                       FontSize="11"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <Button Grid.Column="1" Content="全选" Padding="10,4" Click="SelectAllButton_Click" />
+                                            <Button Grid.Column="2" Content="清除" Padding="10,4" Click="ClearSelectionButton_Click" />
+                                        </Grid>
                                     </Border>
                                     <Grid Grid.Row="1">
                                 <GridView x:Name="ImageGrid"
                                           SelectionChanged="Asset_SelectionChanged"
-                                          SelectionMode="Single">
+                                          ContainerContentChanging="ImageGrid_ContainerContentChanging"
+                                          IsMultiSelectCheckBoxEnabled="True"
+                                          SelectionMode="Multiple">
                                     <GridView.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <ItemsWrapGrid Orientation="Horizontal" />
@@ -196,7 +209,8 @@
                                 <ListView x:Name="AssetList"
                                           Visibility="Collapsed"
                                           SelectionChanged="Asset_SelectionChanged"
-                                          SelectionMode="Single">
+                                          IsMultiSelectCheckBoxEnabled="True"
+                                          SelectionMode="Multiple">
                                     <ListView.ItemTemplate>
                                         <DataTemplate>
                                             <Grid Height="64" Padding="8,5" ColumnSpacing="12"
@@ -272,7 +286,13 @@
                                         <Button x:Name="ExportSelectedButton" Click="ExportSelectedButton_Click" IsEnabled="False">
                                             <StackPanel Orientation="Horizontal" Spacing="7">
                                                 <FontIcon Glyph="&#xE896;" FontSize="14" />
-                                                <TextBlock Text="导出原始资源" />
+                                                <TextBlock x:Name="ExportSelectedButtonText" Text="导出所选 (0)" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="PropertiesButton" Click="PropertiesButton_Click" IsEnabled="False">
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <FontIcon Glyph="&#xE946;" FontSize="14" />
+                                                <TextBlock Text="文件属性" />
                                             </StackPanel>
                                         </Button>
                                         <Button x:Name="ExportModelButton" Click="ExportModelButton_Click" IsEnabled="False" Visibility="Collapsed">

@@ -50,6 +50,7 @@ public sealed class AssetItemViewModel : INotifyPropertyChanged
     }
 
     public AssetEntry Asset { get; }
+    public bool IsThumbnailLoading { get; set; }
     public string Name => Asset.Name;
     public string Path => Asset.Entry.Path;
     public string ArchiveName => Asset.ArchiveName;
