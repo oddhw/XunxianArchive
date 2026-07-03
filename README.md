@@ -16,14 +16,14 @@
 需要 .NET 10 SDK。项目使用 Windows App SDK 2.2，目标为 Windows x64：
 
 ```powershell
-dotnet restore .\tools\XunxianDpkViewer\XunxianDpkViewer.csproj
-dotnet build .\tools\XunxianDpkViewer\XunxianDpkViewer.csproj -c Release -p:Platform=x64
+dotnet restore .\XunxianDpkViewer.csproj
+dotnet build .\XunxianDpkViewer.csproj -c Release -p:Platform=x64
 ```
 
 这是自包含的非 MSIX WinUI 3 项目，发布时可使用：
 
 ```powershell
-dotnet publish .\tools\XunxianDpkViewer\XunxianDpkViewer.csproj -c Release -r win-x64 --self-contained true
+dotnet publish .\XunxianDpkViewer.csproj -c Release -r win-x64 --self-contained true
 ```
 
 发布后的程序位于 `bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\publish\XunxianDpkViewer.exe`。也可以给程序传入 `--self-test`，用已安装的客户端资源执行 DPK、PNG、OGG 和 PMF 解码自检，结果写入 `%LOCALAPPDATA%\XunxianDpkViewer\self-test.log`。
