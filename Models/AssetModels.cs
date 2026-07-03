@@ -25,6 +25,19 @@ public sealed record AssetEntry(
     public string DisplayPath => $"{ArchiveName}  /  {Entry.Path}";
 }
 
+public sealed record FolderNodeInfo(
+    string Name,
+    string ArchivePath,
+    string InternalPath)
+{
+    public string ArchiveName => System.IO.Path.GetFileName(ArchivePath);
+    public string DisplayPath => string.IsNullOrEmpty(InternalPath)
+        ? ArchiveName
+        : $"{ArchiveName}  /  {InternalPath}";
+
+    public override string ToString() => Name;
+}
+
 public sealed class AssetItemViewModel : INotifyPropertyChanged
 {
     private ImageSource? _thumbnail;

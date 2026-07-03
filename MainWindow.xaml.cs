@@ -33,6 +33,8 @@ public sealed partial class MainWindow : Window
     private int _thumbnailGeneration;
     private bool _isBusy;
     private bool _modelExpanded;
+    private bool _buildingFolderTree;
+    private FolderNodeInfo? _selectedFolder;
 
     public MainWindow()
     {
@@ -138,6 +140,7 @@ public sealed partial class MainWindow : Window
         ArchiveSummaryText.Text = $"{_workspace.ArchivePaths.Count} 个包 · {images:N0} 图像 · {sounds:N0} 声音 · {models:N0} 模型";
         BatchExportButton.IsEnabled = true;
         _currentPage = 0;
+        BuildFolderTree();
         ApplyFilter();
     }
 
@@ -150,12 +153,128 @@ public sealed partial class MainWindow : Window
         throw new DirectoryNotFoundException("所选位置不是有效的新寻仙客户端目录：没有找到 res\\gui.dpk。");
     }
 
+    private void BuildFolderTree()
+    {
+        _buildingFolderTree = true;
+        FolderTree.RootNodes.Clear();
+        _selectedFolder = null;
+
+        TreeViewNode? firstRoot = null;
+        TreeViewNode? preferredNode = null;
+        string preferredArchive = _currentKind switch
+        {
+            AssetKind.Image => "gui.dpk",
+            AssetKind.Sound => "sound.dpk",
+            AssetKind.Model => "obj.dpk",
+            _ => string.Empty
+        };
+        string preferredPath = _currentKind switch
+        {
+            AssetKind.Image => "icon",
+            AssetKind.Model => "share/mesh",
+            _ => string.Empty
+        };
+        foreach (IGrouping<string, AssetEntry> archive in _workspace.Assets
+                     .Where(asset => asset.Kind == _currentKind)
+                     .GroupBy(asset => asset.ArchivePath, StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(group => string.Equals(System.IO.Path.GetFileName(group.Key), preferredArchive, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                     .ThenBy(group => System.IO.Path.GetFileName(group.Key), StringComparer.OrdinalIgnoreCase))
+        {
+            string archiveName = System.IO.Path.GetFileName(archive.Key);
+            var root = new TreeViewNode
+            {
+                Content = new FolderNodeInfo(archiveName, archive.Key, string.Empty),
+                IsExpanded = true
+            };
+            FolderTree.RootNodes.Add(root);
+            firstRoot ??= root;
+
+            var nodesByPath = new Dictionary<string, TreeViewNode>(StringComparer.OrdinalIgnoreCase)
+            {
+                [string.Empty] = root
+            };
+            IEnumerable<string> directories = archive
+                .Select(asset => GetInternalDirectory(asset.Entry.Path))
+                .Where(path => path.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path.Count(character => character == '/'))
+                .ThenBy(path => path, StringComparer.OrdinalIgnoreCase);
+
+            foreach (string directory in directories)
+            {
+                int slash = directory.LastIndexOf('/');
+                string parentPath = slash < 0 ? string.Empty : directory[..slash];
+                string folderName = slash < 0 ? directory : directory[(slash + 1)..];
+                if (!nodesByPath.TryGetValue(parentPath, out TreeViewNode? parent)) continue;
+
+                var node = new TreeViewNode
+                {
+                    Content = new FolderNodeInfo(folderName, archive.Key, directory)
+                };
+                parent.Children.Add(node);
+                nodesByPath[directory] = node;
+            }
+
+            if (string.Equals(archiveName, preferredArchive, StringComparison.OrdinalIgnoreCase) &&
+                nodesByPath.TryGetValue(preferredPath, out TreeViewNode? categoryDefault))
+            {
+                preferredNode = categoryDefault;
+                categoryDefault.IsExpanded = true;
+            }
+        }
+
+        TreeViewNode? initialNode = preferredNode ?? firstRoot;
+        if (initialNode?.Content is FolderNodeInfo firstFolder)
+        {
+            _selectedFolder = firstFolder;
+            FolderTree.SelectedNode = initialNode;
+            CurrentFolderText.Text = firstFolder.DisplayPath;
+        }
+        else
+        {
+            CurrentFolderText.Text = "当前分类没有资源目录";
+        }
+        _buildingFolderTree = false;
+    }
+
+    private void FolderTree_SelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
+    {
+        if (_buildingFolderTree || sender.SelectedNode?.Content is not FolderNodeInfo folder) return;
+        _selectedFolder = folder;
+        CurrentFolderText.Text = folder.DisplayPath;
+        _currentPage = 0;
+        ApplyFilter();
+    }
+
+    private bool IsAssetInSelectedFolder(AssetEntry asset)
+    {
+        if (_selectedFolder is null) return false;
+        if (!string.Equals(asset.ArchivePath, _selectedFolder.ArchivePath, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string assetDirectory = GetInternalDirectory(asset.Entry.Path);
+        if (string.IsNullOrWhiteSpace(SearchBox.Text))
+            return string.Equals(assetDirectory, _selectedFolder.InternalPath, StringComparison.OrdinalIgnoreCase);
+
+        if (_selectedFolder.InternalPath.Length == 0) return true;
+        return string.Equals(assetDirectory, _selectedFolder.InternalPath, StringComparison.OrdinalIgnoreCase) ||
+               assetDirectory.StartsWith(_selectedFolder.InternalPath + '/', StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetInternalDirectory(string entryPath)
+    {
+        string normalized = entryPath.Replace('\\', '/').Trim('/');
+        int slash = normalized.LastIndexOf('/');
+        return slash < 0 ? string.Empty : normalized[..slash];
+    }
+
     private void ApplyFilter()
     {
         string[] terms = SearchBox.Text
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         _filteredAssets = _workspace.Assets
             .Where(asset => asset.Kind == _currentKind)
+            .Where(IsAssetInSelectedFolder)
             .Where(asset => terms.Length == 0 || terms.All(term =>
                 asset.Entry.Path.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                 asset.ArchiveName.Contains(term, StringComparison.OrdinalIgnoreCase)))
@@ -178,7 +297,8 @@ public sealed partial class MainWindow : Window
         PreviousPageButton.IsEnabled = _currentPage > 0;
         NextPageButton.IsEnabled = _currentPage + 1 < pageCount;
         EmptyPanel.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        SetStatus($"找到 {_filteredAssets.Count:N0} 个资源，每页最多 {PageSize} 个");
+        string scope = string.IsNullOrWhiteSpace(SearchBox.Text) ? "当前文件夹" : "当前目录及子目录";
+        SetStatus($"{scope}找到 {_filteredAssets.Count:N0} 个资源，每页最多 {PageSize} 个");
 
         if (_currentKind == AssetKind.Image)
             _ = LoadThumbnailsAsync(_items.ToArray(), generation);
@@ -357,8 +477,8 @@ public sealed partial class MainWindow : Window
         if (_currentKind != AssetKind.Model) return;
         _modelExpanded = !_modelExpanded;
         AssetBrowserPanel.Visibility = _modelExpanded ? Visibility.Collapsed : Visibility.Visible;
-        AssetListColumn.MinWidth = _modelExpanded ? 0 : 340;
-        AssetListColumn.Width = _modelExpanded ? new GridLength(0) : new GridLength(380);
+        AssetListColumn.MinWidth = _modelExpanded ? 0 : 600;
+        AssetListColumn.Width = _modelExpanded ? new GridLength(0) : new GridLength(650);
         ExpandModelButtonText.Text = _modelExpanded ? "恢复模型列表" : "放大模型预览";
     }
 
@@ -426,6 +546,7 @@ public sealed partial class MainWindow : Window
         _currentPage = 0;
         SearchBox.Text = string.Empty;
         ConfigureCategoryUi();
+        BuildFolderTree();
         ApplyFilter();
     }
 
@@ -450,8 +571,8 @@ public sealed partial class MainWindow : Window
         ExpandModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         _modelExpanded = false;
         AssetBrowserPanel.Visibility = Visibility.Visible;
-        AssetListColumn.MinWidth = models ? 340 : 440;
-        AssetListColumn.Width = models ? new GridLength(380) : new GridLength(1.35, GridUnitType.Star);
+        AssetListColumn.MinWidth = models ? 600 : 650;
+        AssetListColumn.Width = models ? new GridLength(650) : new GridLength(1.35, GridUnitType.Star);
         PreviewColumn.Width = models ? new GridLength(1, GridUnitType.Star) : new GridLength(1, GridUnitType.Star);
         ExpandModelButtonText.Text = "放大模型预览";
         if (!sounds) _mediaPlayer.Pause();
