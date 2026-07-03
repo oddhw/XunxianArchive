@@ -49,12 +49,19 @@ public sealed class AssetItemViewModel : INotifyPropertyChanged
         _subtitle = asset.Entry.Path;
     }
 
-    public AssetEntry Asset { get; }
+    public AssetItemViewModel(CompositeModelEntry composite)
+    {
+        Composite = composite;
+        _subtitle = $"完整组合 · {composite.Parts.Count:N0} 个 PMF 部件";
+    }
+
+    public AssetEntry? Asset { get; }
+    public CompositeModelEntry? Composite { get; }
     public bool IsThumbnailLoading { get; set; }
-    public string Name => Asset.Name;
-    public string Path => Asset.Entry.Path;
-    public string ArchiveName => Asset.ArchiveName;
-    public string Glyph => Asset.Kind switch
+    public string Name => Asset?.Name ?? Composite?.Name ?? string.Empty;
+    public string Path => Asset?.Entry.Path ?? Composite?.ConfigAsset.Entry.Path ?? string.Empty;
+    public string ArchiveName => Asset?.ArchiveName ?? Composite?.ConfigAsset.ArchiveName ?? string.Empty;
+    public string Glyph => Composite is not null ? "\uE902" : Asset?.Kind switch
     {
         AssetKind.Sound => "\uE8D6",
         AssetKind.Model => "\uE809",
@@ -110,3 +117,22 @@ public sealed record ModelTextureBinding(
 
     public override string ToString() => DisplayName;
 }
+
+public sealed record CompositeModelPart(
+    AssetEntry MeshAsset,
+    string MaterialName,
+    ModelTextureBinding? TextureBinding);
+
+public sealed record CompositeModelEntry(
+    string Name,
+    AssetEntry ConfigAsset,
+    IReadOnlyList<CompositeModelPart> Parts)
+{
+    public string DisplayPath => $"{ConfigAsset.ArchiveName}  /  {ConfigAsset.Entry.Path}";
+}
+
+public sealed record ModelRenderPart(
+    string Name,
+    PmfMesh Mesh,
+    DecodedTexture? Texture,
+    string TextureName);
