@@ -2,6 +2,10 @@
 
 一个基于 WinUI 3 的本地资源工具，直接读取《新寻仙》客户端的 `whpackage1.0` DPK 包。
 
+## 直接使用
+
+普通用户可以从 GitHub Releases 下载单文件版 `XunxianDpkViewer.exe`，无需安装 .NET，也不需要把其他 DLL 放在程序旁边。首次启动时选择《新寻仙》客户端或 `res` 目录即可。
+
 ## 已支持
 
 - 图标与贴图：PNG、JPG、DDS 等缩略图和大图预览。
@@ -20,13 +24,13 @@ dotnet restore .\XunxianDpkViewer.csproj
 dotnet build .\XunxianDpkViewer.csproj -c Release -p:Platform=x64
 ```
 
-这是自包含的非 MSIX WinUI 3 项目，发布时可使用：
+这是自包含的非 MSIX WinUI 3 项目。运行发布脚本后，会在仓库根目录生成可直接双击的单文件程序：
 
 ```powershell
-dotnet publish .\XunxianDpkViewer.csproj -c Release -r win-x64 --self-contained true
+.\publish-single.cmd
 ```
 
-发布后的程序位于 `bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\publish\XunxianDpkViewer.exe`。也可以给程序传入 `--self-test`，用已安装的客户端资源执行 DPK、PNG、OGG 和 PMF 解码自检，结果写入 `%LOCALAPPDATA%\XunxianDpkViewer\self-test.log`。
+发布后的程序直接位于 `XunxianDpkViewerPublish\XunxianDpkViewer.exe`。也可以给程序传入 `--self-test`，用已安装的客户端资源执行 DPK、PNG、OGG 和 PMF 解码自检，结果写入 `%LOCALAPPDATA%\XunxianDpkViewer\self-test.log`。
 
 ## 格式说明
 
