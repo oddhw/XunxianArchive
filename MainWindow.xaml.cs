@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Security.Cryptography;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -19,9 +18,8 @@ namespace XunxianDpkViewer;
 
 public sealed partial class MainWindow : Window
 {
-    private const int PageSize = 200;
     private readonly DpkWorkspace _workspace = new();
-    private readonly ObservableCollection<AssetItemViewModel> _items = new();
+    private List<AssetItemViewModel> _items = new();
     private readonly DispatcherTimer _searchTimer;
     private readonly MediaPlayer _mediaPlayer = new();
     private readonly MediaPlayerElement _audioPlayer;
@@ -29,7 +27,7 @@ public sealed partial class MainWindow : Window
     private List<AssetEntry> _filteredAssets = new();
     private AssetKind _currentKind = AssetKind.Image;
     private AssetEntry? _selectedAsset;
-    private int _currentPage;
+    private int _sortMode;
     private int _thumbnailGeneration;
     private bool _isBusy;
     private bool _modelExpanded;
@@ -139,7 +137,6 @@ public sealed partial class MainWindow : Window
         int models = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Model);
         ArchiveSummaryText.Text = $"{_workspace.ArchivePaths.Count} 个包 · {images:N0} 图像 · {sounds:N0} 声音 · {models:N0} 模型";
         BatchExportButton.IsEnabled = true;
-        _currentPage = 0;
         BuildFolderTree();
         ApplyFilter();
     }
@@ -242,7 +239,6 @@ public sealed partial class MainWindow : Window
         if (_buildingFolderTree || sender.SelectedNode?.Content is not FolderNodeInfo folder) return;
         _selectedFolder = folder;
         CurrentFolderText.Text = folder.DisplayPath;
-        _currentPage = 0;
         ApplyFilter();
     }
 
@@ -272,63 +268,80 @@ public sealed partial class MainWindow : Window
     {
         string[] terms = SearchBox.Text
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        _filteredAssets = _workspace.Assets
+        IEnumerable<AssetEntry> query = _workspace.Assets
             .Where(asset => asset.Kind == _currentKind)
             .Where(IsAssetInSelectedFolder)
             .Where(asset => terms.Length == 0 || terms.All(term =>
                 asset.Entry.Path.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                asset.ArchiveName.Contains(term, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
-        _currentPage = Math.Clamp(_currentPage, 0, Math.Max(0, PageCount - 1));
-        PopulatePage();
+                asset.ArchiveName.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        query = _sortMode switch
+        {
+            1 => query.OrderByDescending(asset => asset.Name, NaturalStringComparer.Instance),
+            2 => query.OrderBy(asset => asset.Extension, StringComparer.OrdinalIgnoreCase)
+                      .ThenBy(asset => asset.Name, NaturalStringComparer.Instance),
+            3 => query.OrderBy(asset => asset.Entry.Path, NaturalStringComparer.Instance),
+            4 => query,
+            _ => query.OrderBy(asset => asset.Name, NaturalStringComparer.Instance)
+        };
+        _filteredAssets = query.ToList();
+        PopulateAssets();
     }
 
-    private int PageCount => _filteredAssets.Count == 0 ? 0 : (_filteredAssets.Count + PageSize - 1) / PageSize;
-
-    private void PopulatePage()
+    private void PopulateAssets()
     {
-        int generation = ++_thumbnailGeneration;
-        _items.Clear();
-        foreach (AssetEntry asset in _filteredAssets.Skip(_currentPage * PageSize).Take(PageSize))
-            _items.Add(new AssetItemViewModel(asset));
-
-        int pageCount = PageCount;
-        PageIndicatorText.Text = pageCount == 0 ? "0 / 0" : $"{_currentPage + 1} / {pageCount}";
-        PreviousPageButton.IsEnabled = _currentPage > 0;
-        NextPageButton.IsEnabled = _currentPage + 1 < pageCount;
+        _thumbnailGeneration++;
+        _items = _filteredAssets.Select(asset => new AssetItemViewModel(asset)).ToList();
+        ImageGrid.ItemsSource = _items;
+        AssetList.ItemsSource = _items;
         EmptyPanel.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         string scope = string.IsNullOrWhiteSpace(SearchBox.Text) ? "当前文件夹" : "当前目录及子目录";
-        SetStatus($"{scope}找到 {_filteredAssets.Count:N0} 个资源，每页最多 {PageSize} 个");
-
-        if (_currentKind == AssetKind.Image)
-            _ = LoadThumbnailsAsync(_items.ToArray(), generation);
+        SetStatus($"{scope}找到 {_filteredAssets.Count:N0} 个资源，已全部显示");
+        UpdateSelectionUi(0);
     }
 
-    private async Task LoadThumbnailsAsync(IReadOnlyList<AssetItemViewModel> items, int generation)
+    private void ImageGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        foreach (AssetItemViewModel item in items)
+        if (args.InRecycleQueue || args.Item is not AssetItemViewModel item) return;
+        _ = LoadThumbnailAsync(item, _thumbnailGeneration);
+    }
+
+    private async Task LoadThumbnailAsync(AssetItemViewModel item, int generation)
+    {
+        if (item.Thumbnail is not null || item.IsThumbnailLoading) return;
+        item.IsThumbnailLoading = true;
+        try
         {
             if (generation != _thumbnailGeneration) return;
-            try
-            {
-                byte[] data = await Task.Run(() => _workspace.Extract(item.Asset));
-                if (generation != _thumbnailGeneration) return;
-                item.Thumbnail = await CreateBitmapAsync(data, 128);
-            }
-            catch
-            {
-                item.Subtitle = "无法生成缩略图";
-            }
+            byte[] data = await Task.Run(() => _workspace.Extract(item.Asset));
+            if (generation != _thumbnailGeneration) return;
+            item.Thumbnail = await CreateBitmapAsync(data, 128);
+        }
+        catch
+        {
+            item.Subtitle = "无法生成缩略图";
+        }
+        finally
+        {
+            item.IsThumbnailLoading = false;
         }
     }
 
     private async void Asset_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is not ListViewBase list || list.SelectedItem is not AssetItemViewModel item) return;
+        if (sender is not ListViewBase list) return;
+        int selectedCount = list.SelectedItems.Count;
+        UpdateSelectionUi(selectedCount);
+        AssetItemViewModel? item = e.AddedItems.OfType<AssetItemViewModel>().LastOrDefault() ??
+                                   list.SelectedItems.OfType<AssetItemViewModel>().LastOrDefault();
+        if (item is null)
+        {
+            _selectedAsset = null;
+            ResetPreviewSelection();
+            return;
+        }
+
         _selectedAsset = item.Asset;
-        ExportSelectedButton.IsEnabled = true;
-        ExportModelButton.IsEnabled = item.Asset.Kind == AssetKind.Model;
-        SelectedNameText.Text = item.Asset.Name;
+        SelectedNameText.Text = selectedCount > 1 ? $"{item.Asset.Name}（已选择 {selectedCount:N0} 项）" : item.Asset.Name;
         SelectedPathText.Text = item.Asset.DisplayPath;
         SelectedMetadataText.Text = "正在读取…";
 
@@ -419,18 +432,82 @@ public sealed partial class MainWindow : Window
 
     private async void ExportSelectedButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_selectedAsset is null || _isBusy) return;
+        AssetEntry[] assets = GetSelectedAssets();
+        if (assets.Length == 0 || _isBusy) return;
         StorageFolder? folder = await PickOutputFolderAsync();
         if (folder is null) return;
-        SetBusy(true, "正在导出所选资源…");
+        SetBusy(true, $"正在导出 0 / {assets.Length:N0}…");
         try
         {
-            await Task.Run(() => _workspace.ExtractTo(_selectedAsset, folder.Path));
-            SetStatus($"已导出：{_selectedAsset.Name}");
+            await Task.Run(() =>
+            {
+                for (int i = 0; i < assets.Length; i++)
+                {
+                    _workspace.ExtractTo(assets[i], folder.Path);
+                    if (i % 20 == 0 || i == assets.Length - 1)
+                    {
+                        int completed = i + 1;
+                        DispatcherQueue.TryEnqueue(() => SetStatus($"正在导出 {completed:N0} / {assets.Length:N0}…"));
+                    }
+                }
+            });
+            SetStatus($"已导出所选 {assets.Length:N0} 个资源");
         }
         catch (Exception ex)
         {
             await ShowErrorAsync("导出失败", ex.Message);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async void PropertiesButton_Click(object sender, RoutedEventArgs e)
+    {
+        AssetEntry[] selected = GetSelectedAssets();
+        if (selected.Length != 1 || _isBusy) return;
+        AssetEntry asset = selected[0];
+        SetBusy(true, "正在读取文件属性…");
+        try
+        {
+            byte[] data = await Task.Run(() => _workspace.Extract(asset));
+            string kind = asset.Kind switch
+            {
+                AssetKind.Image => "图像",
+                AssetKind.Sound => "声音",
+                AssetKind.Model => "模型",
+                _ => "其他"
+            };
+            string details =
+                $"文件名：{asset.Name}\n" +
+                $"资源类型：{kind}\n" +
+                $"文件格式：{asset.Extension.TrimStart('.').ToUpperInvariant()}\n" +
+                $"解包大小：{FormatBytes(data.Length)}（{data.Length:N0} 字节）\n" +
+                $"所属 DPK：{asset.ArchiveName}\n" +
+                $"包内路径：{asset.Entry.Path}\n" +
+                $"索引根块：{asset.Entry.RootBlock:N0}（0x{asset.Entry.RootBlock:X8}）\n" +
+                $"DPK 文件：{asset.ArchivePath}";
+
+            SetBusy(false);
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Content.XamlRoot,
+                Title = "文件属性",
+                Content = new TextBlock
+                {
+                    Text = details,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                    MaxWidth = 620
+                },
+                CloseButtonText = "关闭"
+            };
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("读取属性失败", ex.Message);
         }
         finally
         {
@@ -543,7 +620,6 @@ public sealed partial class MainWindow : Window
             "model" => AssetKind.Model,
             _ => AssetKind.Image
         };
-        _currentPage = 0;
         SearchBox.Text = string.Empty;
         ConfigureCategoryUi();
         BuildFolderTree();
@@ -578,8 +654,12 @@ public sealed partial class MainWindow : Window
         if (!sounds) _mediaPlayer.Pause();
         if (_currentKind != AssetKind.Model) _modelPreview.SetMesh(null);
         PreviewImage.Source = null;
+        ImageGrid.SelectedItems.Clear();
+        AssetList.SelectedItems.Clear();
         _selectedAsset = null;
         ExportSelectedButton.IsEnabled = false;
+        ExportSelectedButtonText.Text = "导出所选 (0)";
+        PropertiesButton.IsEnabled = false;
         ExportModelButton.IsEnabled = false;
         SelectedNameText.Text = "尚未选择资源";
         SelectedPathText.Text = images ? "从左侧选择一张图像" : sounds ? "从左侧选择一个声音" : "从左侧选择一个 PMF 模型";
@@ -593,18 +673,53 @@ public sealed partial class MainWindow : Window
         _searchTimer.Start();
     }
 
-    private void PreviousPageButton_Click(object sender, RoutedEventArgs e)
+    private void SortComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_currentPage <= 0) return;
-        _currentPage--;
-        PopulatePage();
+        if (SortComboBox.SelectedIndex < 0) return;
+        _sortMode = SortComboBox.SelectedIndex;
+        if (ImageGrid is not null && AssetList is not null) ApplyFilter();
     }
 
-    private void NextPageButton_Click(object sender, RoutedEventArgs e)
+    private void SelectAllButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentPage + 1 >= PageCount) return;
-        _currentPage++;
-        PopulatePage();
+        GetActiveAssetList().SelectAll();
+    }
+
+    private void ClearSelectionButton_Click(object sender, RoutedEventArgs e)
+    {
+        GetActiveAssetList().SelectedItems.Clear();
+    }
+
+    private ListViewBase GetActiveAssetList() => _currentKind == AssetKind.Image ? ImageGrid : AssetList;
+
+    private AssetEntry[] GetSelectedAssets() => GetActiveAssetList().SelectedItems
+        .OfType<AssetItemViewModel>()
+        .Select(item => item.Asset)
+        .Distinct()
+        .ToArray();
+
+    private void UpdateSelectionUi(int selectedCount)
+    {
+        ExportSelectedButton.IsEnabled = selectedCount > 0;
+        ExportSelectedButtonText.Text = $"导出所选 ({selectedCount:N0})";
+        PropertiesButton.IsEnabled = selectedCount == 1;
+        AssetEntry[] selected = GetSelectedAssets();
+        ExportModelButton.IsEnabled = selected.Length == 1 && selected[0].Kind == AssetKind.Model;
+    }
+
+    private void ResetPreviewSelection()
+    {
+        ExportModelButton.IsEnabled = false;
+        PropertiesButton.IsEnabled = false;
+        SelectedNameText.Text = "尚未选择资源";
+        SelectedPathText.Text = _currentKind == AssetKind.Image
+            ? "可多选图像后批量导出"
+            : _currentKind == AssetKind.Sound
+                ? "可多选声音后批量导出"
+                : "可多选模型后批量导出";
+        SelectedMetadataText.Text = string.Empty;
+        PreviewImage.Source = null;
+        if (_currentKind == AssetKind.Model) _modelPreview.SetMesh(null);
     }
 
     private void SetBusy(bool busy, string? status = null)
@@ -639,5 +754,57 @@ public sealed partial class MainWindow : Window
             unit++;
         }
         return $"{value:0.##} {units[unit]}";
+    }
+
+    private sealed class NaturalStringComparer : IComparer<string>
+    {
+        public static readonly NaturalStringComparer Instance = new();
+
+        public int Compare(string? left, string? right)
+        {
+            if (ReferenceEquals(left, right)) return 0;
+            if (left is null) return -1;
+            if (right is null) return 1;
+
+            int leftIndex = 0;
+            int rightIndex = 0;
+            while (leftIndex < left.Length && rightIndex < right.Length)
+            {
+                if (char.IsDigit(left[leftIndex]) && char.IsDigit(right[rightIndex]))
+                {
+                    int leftEnd = leftIndex;
+                    int rightEnd = rightIndex;
+                    while (leftEnd < left.Length && char.IsDigit(left[leftEnd])) leftEnd++;
+                    while (rightEnd < right.Length && char.IsDigit(right[rightEnd])) rightEnd++;
+
+                    int leftSignificant = leftIndex;
+                    int rightSignificant = rightIndex;
+                    while (leftSignificant < leftEnd - 1 && left[leftSignificant] == '0') leftSignificant++;
+                    while (rightSignificant < rightEnd - 1 && right[rightSignificant] == '0') rightSignificant++;
+                    int leftDigits = leftEnd - leftSignificant;
+                    int rightDigits = rightEnd - rightSignificant;
+                    if (leftDigits != rightDigits) return leftDigits.CompareTo(rightDigits);
+
+                    int digitComparison = string.CompareOrdinal(
+                        left, leftSignificant,
+                        right, rightSignificant,
+                        leftDigits);
+                    if (digitComparison != 0) return digitComparison;
+
+                    int runLengthComparison = (leftEnd - leftIndex).CompareTo(rightEnd - rightIndex);
+                    if (runLengthComparison != 0) return runLengthComparison;
+                    leftIndex = leftEnd;
+                    rightIndex = rightEnd;
+                    continue;
+                }
+
+                int characterComparison = char.ToUpperInvariant(left[leftIndex])
+                    .CompareTo(char.ToUpperInvariant(right[rightIndex]));
+                if (characterComparison != 0) return characterComparison;
+                leftIndex++;
+                rightIndex++;
+            }
+            return (left.Length - leftIndex).CompareTo(right.Length - rightIndex);
+        }
     }
 }
