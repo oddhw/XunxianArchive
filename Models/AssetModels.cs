@@ -91,3 +91,22 @@ public sealed record PmfMesh(
     uint VertexFlags,
     uint UvChannelCount,
     uint DeclaredTriangleCount);
+
+public sealed record DecodedTexture(
+    int Width,
+    int Height,
+    byte[] BgraPixels,
+    string Format);
+
+public sealed record ModelTextureBinding(
+    AssetEntry TextureAsset,
+    string MapType,
+    string MaterialName,
+    string ConfigPath)
+{
+    public string DisplayName => string.IsNullOrWhiteSpace(MaterialName)
+        ? $"{MapType} · {TextureAsset.Name}"
+        : $"{MaterialName} · {MapType} · {TextureAsset.Name}";
+
+    public override string ToString() => DisplayName;
+}
