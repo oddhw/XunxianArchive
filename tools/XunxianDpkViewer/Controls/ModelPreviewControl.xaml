@@ -4,9 +4,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch">
-    <Grid Background="#07131C" CornerRadius="16">
+    <Grid Background="{StaticResource SurfaceAltBrush}" CornerRadius="16">
         <Canvas x:Name="Surface"
-                Background="#07131C"
+                Background="{StaticResource SurfaceAltBrush}"
                 SizeChanged="Surface_SizeChanged"
                 PointerPressed="Surface_PointerPressed"
                 PointerMoved="Surface_PointerMoved"
@@ -17,16 +17,16 @@
                 VerticalAlignment="Top"
                 Margin="14"
                 Padding="10,6"
-                Background="#B0162530"
+                Background="#D0182334"
                 CornerRadius="8">
             <TextBlock x:Name="HintText"
                        Text="实体预览 · 拖拽旋转 · 滚轮缩放"
-                       Foreground="#B8D8E5"
+                       Foreground="{StaticResource SecondaryTextBrush}"
                        FontSize="12" />
         </Border>
         <TextBlock x:Name="EmptyText"
                    Text="选择一个 PMF 模型查看实体预览"
-                   Foreground="#78909C"
+                   Foreground="{StaticResource MutedTextBrush}"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center" />
     </Grid>
