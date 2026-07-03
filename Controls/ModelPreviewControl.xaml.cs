@@ -128,9 +128,9 @@ public sealed partial class ModelPreviewControl : UserControl
                 if (geometry.Figures.Count == 0) continue;
 
                 float amount = shade / (float)(ShadeCount - 1);
-                byte red = (byte)(44 + amount * 62);
-                byte green = (byte)(104 + amount * 116);
-                byte blue = (byte)(118 + amount * 112);
+                byte red = (byte)(48 + amount * 72);
+                byte green = (byte)(86 + amount * 92);
+                byte blue = (byte)(150 + amount * 86);
                 Surface.Children.Add(new Microsoft.UI.Xaml.Shapes.Path
                 {
                     Data = geometry,

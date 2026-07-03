@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window
     private bool _isBusy;
     private bool _modelExpanded;
     private bool _buildingFolderTree;
+    private bool _multiSelectMode;
     private FolderNodeInfo? _selectedFolder;
 
     public MainWindow()
@@ -42,6 +43,8 @@ public sealed partial class MainWindow : Window
         _modelPreview = new ModelPreviewControl();
         ModelPreviewHost.Content = _modelPreview;
         ExtendsContentIntoTitleBar = false;
+        string iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "Xunxian.ico");
+        if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         AppWindow.Resize(new SizeInt32(1600, 960));
 
         ImageGrid.ItemsSource = _items;
@@ -472,6 +475,8 @@ public sealed partial class MainWindow : Window
         try
         {
             byte[] data = await Task.Run(() => _workspace.Extract(asset));
+            var archiveInfo = new FileInfo(asset.ArchivePath);
+            string sha256 = Convert.ToHexString(SHA256.HashData(data));
             string kind = asset.Kind switch
             {
                 AssetKind.Image => "图像",
@@ -487,19 +492,30 @@ public sealed partial class MainWindow : Window
                 $"所属 DPK：{asset.ArchiveName}\n" +
                 $"包内路径：{asset.Entry.Path}\n" +
                 $"索引根块：{asset.Entry.RootBlock:N0}（0x{asset.Entry.RootBlock:X8}）\n" +
-                $"DPK 文件：{asset.ArchivePath}";
+                $"SHA-256：{sha256}\n\n" +
+                $"DPK 文件：{asset.ArchivePath}\n" +
+                $"DPK 大小：{FormatBytes(archiveInfo.Length)}（{archiveInfo.Length:N0} 字节）\n" +
+                $"DPK 修改时间：{archiveInfo.LastWriteTime:yyyy-MM-dd HH:mm:ss}";
 
             SetBusy(false);
             var dialog = new ContentDialog
             {
                 XamlRoot = Content.XamlRoot,
                 Title = "文件属性",
-                Content = new TextBlock
+                MinWidth = 760,
+                Content = new ScrollViewer
                 {
-                    Text = details,
-                    TextWrapping = TextWrapping.Wrap,
-                    IsTextSelectionEnabled = true,
-                    MaxWidth = 620
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Width = 700,
+                    Height = 390,
+                    Padding = new Thickness(16),
+                    Content = new TextBlock
+                    {
+                        Text = details,
+                        TextWrapping = TextWrapping.Wrap,
+                        IsTextSelectionEnabled = true
+                    }
                 },
                 CloseButtonText = "关闭"
             };
@@ -645,6 +661,7 @@ public sealed partial class MainWindow : Window
         ModelPreviewHost.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         ExportModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         ExpandModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
+        SetMultiSelectMode(false);
         _modelExpanded = false;
         AssetBrowserPanel.Visibility = Visibility.Visible;
         AssetListColumn.MinWidth = models ? 600 : 650;
@@ -654,11 +671,11 @@ public sealed partial class MainWindow : Window
         if (!sounds) _mediaPlayer.Pause();
         if (_currentKind != AssetKind.Model) _modelPreview.SetMesh(null);
         PreviewImage.Source = null;
-        ImageGrid.SelectedItems.Clear();
-        AssetList.SelectedItems.Clear();
+        ImageGrid.SelectedItem = null;
+        AssetList.SelectedItem = null;
         _selectedAsset = null;
         ExportSelectedButton.IsEnabled = false;
-        ExportSelectedButtonText.Text = "导出所选 (0)";
+        ExportSelectedButtonText.Text = "导出原始资源";
         PropertiesButton.IsEnabled = false;
         ExportModelButton.IsEnabled = false;
         SelectedNameText.Text = "尚未选择资源";
@@ -682,12 +699,38 @@ public sealed partial class MainWindow : Window
 
     private void SelectAllButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!_multiSelectMode) return;
         GetActiveAssetList().SelectAll();
     }
 
     private void ClearSelectionButton_Click(object sender, RoutedEventArgs e)
     {
-        GetActiveAssetList().SelectedItems.Clear();
+        GetActiveAssetList().SelectedItem = null;
+    }
+
+    private void ToggleMultiSelectButton_Click(object sender, RoutedEventArgs e) =>
+        SetMultiSelectMode(!_multiSelectMode);
+
+    private void SetMultiSelectMode(bool enabled)
+    {
+        _multiSelectMode = enabled;
+        if (ImageGrid.ItemsSource is null || AssetList.ItemsSource is null) return;
+        if (!enabled)
+        {
+            ImageGrid.SelectedItem = null;
+            AssetList.SelectedItem = null;
+        }
+
+        ListViewSelectionMode selectionMode = enabled ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
+        ImageGrid.SelectionMode = selectionMode;
+        AssetList.SelectionMode = selectionMode;
+        ImageGrid.IsMultiSelectCheckBoxEnabled = enabled;
+        AssetList.IsMultiSelectCheckBoxEnabled = enabled;
+        MultiSelectButton.Content = enabled ? "完成" : "多选";
+        SelectAllButton.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        ClearSelectionButton.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSelectionUi(GetActiveAssetList().SelectedItems.Count);
+        if (!enabled) ResetPreviewSelection();
     }
 
     private ListViewBase GetActiveAssetList() => _currentKind == AssetKind.Image ? ImageGrid : AssetList;
@@ -701,7 +744,9 @@ public sealed partial class MainWindow : Window
     private void UpdateSelectionUi(int selectedCount)
     {
         ExportSelectedButton.IsEnabled = selectedCount > 0;
-        ExportSelectedButtonText.Text = $"导出所选 ({selectedCount:N0})";
+        ExportSelectedButtonText.Text = _multiSelectMode
+            ? $"导出所选 ({selectedCount:N0})"
+            : "导出原始资源";
         PropertiesButton.IsEnabled = selectedCount == 1;
         AssetEntry[] selected = GetSelectedAssets();
         ExportModelButton.IsEnabled = selected.Length == 1 && selected[0].Kind == AssetKind.Model;
