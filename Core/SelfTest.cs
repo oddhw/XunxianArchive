@@ -50,6 +50,7 @@ public static class SelfTest
         CheckFile(report, root, "cha.dpk", ".pmf", data => DescribeMesh(PmfParser.Parse(data)));
         CheckModelTexture(report, root, "obj.dpk", "share/mesh/gx_jzjcxjgwkc_004_h.pmf");
         CheckModelTexture(report, root, "cha.dpk", "share/mesh/cw/mz635_mz_001.pmf");
+        CheckCompositeModel(report, root, "cha.dpk", "special/gw_cwbiyiniaoludi_1313");
         report.AppendLine("SELF-TEST PASSED");
         return report.ToString();
     }
@@ -66,6 +67,18 @@ public static class SelfTest
         Models.DpkEntry sample = entries.First(entry => entry.Path.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
         byte[] data = reader.Extract(sample);
         report.AppendLine($"{archiveName}: {entries.Count:N0} 项；{sample.Path}；{data.Length:N0} 字节；{validate(data)}");
+    }
+
+    private static void CheckCompositeModel(StringBuilder report, string root, string archiveName, string folderPath)
+    {
+        using var workspace = new DpkWorkspace();
+        workspace.OpenSingleArchive(Path.Combine(root, archiveName));
+        CompositeModelEntry composite = workspace.FindCompositeModels(
+            workspace.ArchivePaths.Single(), folderPath).First();
+        int texturedParts = composite.Parts.Count(part => part.TextureBinding is not null);
+        foreach (CompositeModelPart part in composite.Parts)
+            _ = PmfParser.Parse(workspace.Extract(part.MeshAsset));
+        report.AppendLine($"{archiveName} 组合模型: {composite.Name}；{composite.Parts.Count:N0} 个部件；{texturedParts:N0} 个贴图材质");
     }
 
     private static void CheckModelTexture(StringBuilder report, string root, string archiveName, string modelPath)

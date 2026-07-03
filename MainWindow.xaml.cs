@@ -27,6 +27,7 @@ public sealed partial class MainWindow : Window
     private List<AssetEntry> _filteredAssets = new();
     private AssetKind _currentKind = AssetKind.Image;
     private AssetEntry? _selectedAsset;
+    private CompositeModelEntry? _selectedComposite;
     private int _sortMode;
     private int _thumbnailGeneration;
     private bool _isBusy;
@@ -306,12 +307,24 @@ public sealed partial class MainWindow : Window
     private void PopulateAssets()
     {
         _thumbnailGeneration++;
-        _items = _filteredAssets.Select(asset => new AssetItemViewModel(asset)).ToList();
+        var items = new List<AssetItemViewModel>();
+        int compositeCount = 0;
+        if (_currentKind == AssetKind.Model && _selectedFolder is not null && string.IsNullOrWhiteSpace(SearchBox.Text))
+        {
+            IReadOnlyList<CompositeModelEntry> composites = _workspace.FindCompositeModels(
+                _selectedFolder.ArchivePath,
+                _selectedFolder.InternalPath);
+            items.AddRange(composites.Select(composite => new AssetItemViewModel(composite)));
+            compositeCount = composites.Count;
+        }
+        items.AddRange(_filteredAssets.Select(asset => new AssetItemViewModel(asset)));
+        _items = items;
         ImageGrid.ItemsSource = _items;
         AssetList.ItemsSource = _items;
         EmptyPanel.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         string scope = string.IsNullOrWhiteSpace(SearchBox.Text) ? "当前文件夹" : "当前目录及子目录";
-        SetStatus($"{scope}找到 {_filteredAssets.Count:N0} 个资源，已全部显示");
+        string compositeStatus = compositeCount > 0 ? $"，其中 {compositeCount:N0} 个完整组合模型" : string.Empty;
+        SetStatus($"{scope}找到 {_items.Count:N0} 个资源{compositeStatus}，已全部显示");
         UpdateSelectionUi(0);
     }
 
@@ -323,7 +336,7 @@ public sealed partial class MainWindow : Window
 
     private async Task LoadThumbnailAsync(AssetItemViewModel item, int generation)
     {
-        if (item.Thumbnail is not null || item.IsThumbnailLoading) return;
+        if (item.Asset is null || item.Thumbnail is not null || item.IsThumbnailLoading) return;
         item.IsThumbnailLoading = true;
         try
         {
@@ -356,31 +369,45 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _selectedAsset = item.Asset;
-        SelectedNameText.Text = selectedCount > 1 ? $"{item.Asset.Name}（已选择 {selectedCount:N0} 项）" : item.Asset.Name;
-        SelectedPathText.Text = item.Asset.DisplayPath;
+        if (item.Composite is CompositeModelEntry composite)
+        {
+            _selectedAsset = null;
+            _selectedComposite = composite;
+            SelectedNameText.Text = composite.Name;
+            SelectedPathText.Text = composite.DisplayPath;
+            SelectedMetadataText.Text = $"正在组合 {composite.Parts.Count:N0} 个模型部件及贴图…";
+            ModelTextureSelector.Visibility = Visibility.Collapsed;
+            await PreviewCompositeModelAsync(composite);
+            return;
+        }
+        if (item.Asset is not AssetEntry asset) return;
+
+        _selectedComposite = null;
+        _selectedAsset = asset;
+        SelectedNameText.Text = selectedCount > 1 ? $"{asset.Name}（已选择 {selectedCount:N0} 项）" : asset.Name;
+        SelectedPathText.Text = asset.DisplayPath;
         SelectedMetadataText.Text = "正在读取…";
 
         try
         {
-            byte[] data = await Task.Run(() => _workspace.Extract(item.Asset));
-            if (_selectedAsset != item.Asset) return;
+            byte[] data = await Task.Run(() => _workspace.Extract(asset));
+            if (_selectedAsset != asset) return;
 
-            if (item.Asset.Kind == AssetKind.Image)
+            if (asset.Kind == AssetKind.Image)
             {
                 PreviewImage.Source = await CreateBitmapAsync(data, 0);
-                SelectedMetadataText.Text = $"{item.Asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
+                SelectedMetadataText.Text = $"{asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
             }
-            else if (item.Asset.Kind == AssetKind.Sound)
+            else if (asset.Kind == AssetKind.Sound)
             {
-                await PlaySoundAsync(item.Asset, data);
-                SelectedMetadataText.Text = $"{item.Asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
+                await PlaySoundAsync(asset, data);
+                SelectedMetadataText.Text = $"{asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
             }
-            else if (item.Asset.Kind == AssetKind.Model)
+            else if (asset.Kind == AssetKind.Model)
             {
                 (PmfMesh mesh, IReadOnlyList<ModelTextureBinding> textures) = await Task.Run(() =>
-                    (PmfParser.Parse(data), _workspace.ResolveModelTextures(item.Asset)));
-                if (_selectedAsset != item.Asset) return;
+                    (PmfParser.Parse(data), _workspace.ResolveModelTextures(asset)));
+                if (_selectedAsset != asset) return;
                 _modelPreview.SetMesh(mesh);
                 ModelTextureSelector.Visibility = Visibility.Visible;
                 _settingModelTextureSelection = true;
@@ -388,12 +415,49 @@ public sealed partial class MainWindow : Window
                 ModelTextureComboBox.SelectedIndex = textures.Count > 0 ? 0 : -1;
                 _settingModelTextureSelection = false;
                 SelectedMetadataText.Text = $"PMF v{mesh.Version} · {mesh.Vertices.Count:N0} 顶点 · {mesh.DeclaredTriangleCount:N0} 三角面 · {mesh.UvChannelCount} UV 通道 · {textures.Count:N0} 个关联贴图 · {FormatBytes(data.Length)}";
-                if (textures.Count > 0) await LoadModelTextureAsync(item.Asset, textures[0]);
+                if (textures.Count > 0) await LoadModelTextureAsync(asset, textures[0]);
             }
         }
         catch (Exception ex)
         {
             SelectedMetadataText.Text = $"预览失败：{ex.Message}";
+        }
+    }
+
+    private async Task PreviewCompositeModelAsync(CompositeModelEntry composite)
+    {
+        try
+        {
+            ModelRenderPart[] renderParts = await Task.Run(() => composite.Parts.Select(part =>
+            {
+                PmfMesh mesh = PmfParser.Parse(_workspace.Extract(part.MeshAsset));
+                DecodedTexture? texture = null;
+                string textureName = string.Empty;
+                if (part.TextureBinding is ModelTextureBinding binding)
+                {
+                    try
+                    {
+                        texture = DdsDecoder.Decode(_workspace.Extract(binding.TextureAsset));
+                        textureName = binding.DisplayName;
+                    }
+                    catch
+                    {
+                        // 单个部件贴图不支持时，仍保留其实体着色几何。
+                    }
+                }
+                return new ModelRenderPart(part.MeshAsset.Name, mesh, texture, textureName);
+            }).ToArray());
+            if (_selectedComposite != composite) return;
+            _modelPreview.SetComposite(renderParts, composite.Name);
+            int vertices = renderParts.Sum(part => part.Mesh.Vertices.Count);
+            long triangles = renderParts.Sum(part => (long)part.Mesh.DeclaredTriangleCount);
+            int texturedParts = renderParts.Count(part => part.Texture is not null);
+            SelectedMetadataText.Text = $"完整组合 · {renderParts.Length:N0} 个 PMF 部件 · {vertices:N0} 顶点 · {triangles:N0} 三角面 · {texturedParts:N0} 个部件已加载贴图";
+        }
+        catch (Exception ex)
+        {
+            if (_selectedComposite != composite) return;
+            SelectedMetadataText.Text = $"组合模型预览失败：{ex.Message}";
         }
     }
 
@@ -721,6 +785,7 @@ public sealed partial class MainWindow : Window
         ImageGrid.SelectedItem = null;
         AssetList.SelectedItem = null;
         _selectedAsset = null;
+        _selectedComposite = null;
         ExportSelectedButton.IsEnabled = false;
         ExportSelectedButtonText.Text = "导出原始资源";
         PropertiesButton.IsEnabled = false;
@@ -784,17 +849,18 @@ public sealed partial class MainWindow : Window
     private AssetEntry[] GetSelectedAssets() => GetActiveAssetList().SelectedItems
         .OfType<AssetItemViewModel>()
         .Select(item => item.Asset)
+        .OfType<AssetEntry>()
         .Distinct()
         .ToArray();
 
     private void UpdateSelectionUi(int selectedCount)
     {
-        ExportSelectedButton.IsEnabled = selectedCount > 0;
-        ExportSelectedButtonText.Text = _multiSelectMode
-            ? $"导出所选 ({selectedCount:N0})"
-            : "导出原始资源";
-        PropertiesButton.IsEnabled = selectedCount == 1;
         AssetEntry[] selected = GetSelectedAssets();
+        ExportSelectedButton.IsEnabled = selected.Length > 0;
+        ExportSelectedButtonText.Text = _multiSelectMode
+            ? $"导出所选 ({selected.Length:N0})"
+            : "导出原始资源";
+        PropertiesButton.IsEnabled = selected.Length == 1;
         ExportModelButton.IsEnabled = selected.Length == 1 && selected[0].Kind == AssetKind.Model;
     }
 
@@ -810,6 +876,7 @@ public sealed partial class MainWindow : Window
                 : "可多选模型后批量导出";
         SelectedMetadataText.Text = string.Empty;
         PreviewImage.Source = null;
+        _selectedComposite = null;
         if (_currentKind == AssetKind.Model) _modelPreview.SetMesh(null);
     }
 

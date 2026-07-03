@@ -60,6 +60,9 @@ public sealed class DpkWorkspace : IDisposable
     public IReadOnlyList<ModelTextureBinding> ResolveModelTextures(AssetEntry model) =>
         (_modelTextureResolver ??= new ModelTextureResolver(this)).Resolve(model);
 
+    public IReadOnlyList<CompositeModelEntry> FindCompositeModels(string archivePath, string folderPath) =>
+        (_modelTextureResolver ??= new ModelTextureResolver(this)).FindComposites(archivePath, folderPath);
+
     public void ExtractTo(AssetEntry asset, string rootFolder)
     {
         string archiveFolder = System.IO.Path.GetFileNameWithoutExtension(asset.ArchivePath);

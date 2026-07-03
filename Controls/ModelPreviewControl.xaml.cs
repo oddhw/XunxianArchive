@@ -19,9 +19,8 @@ public enum ModelRenderMode
 public sealed partial class ModelPreviewControl : UserControl
 {
     private const int MaximumRasterDimension = 900;
-    private PmfMesh? _mesh;
-    private DecodedTexture? _texture;
-    private string _textureName = string.Empty;
+    private IReadOnlyList<ModelRenderPart> _parts = Array.Empty<ModelRenderPart>();
+    private string _modelName = string.Empty;
     private ModelRenderMode _mode = ModelRenderMode.Solid;
     private float _yaw = -0.55f;
     private float _pitch = 0.28f;
@@ -37,9 +36,10 @@ public sealed partial class ModelPreviewControl : UserControl
 
     public void SetMesh(PmfMesh? mesh)
     {
-        _mesh = mesh;
-        _texture = null;
-        _textureName = string.Empty;
+        _parts = mesh is null
+            ? Array.Empty<ModelRenderPart>()
+            : new[] { new ModelRenderPart(string.Empty, mesh, null, string.Empty) };
+        _modelName = string.Empty;
         _yaw = -0.55f;
         _pitch = 0.28f;
         _zoom = 0.86f;
@@ -50,10 +50,25 @@ public sealed partial class ModelPreviewControl : UserControl
         ScheduleRender();
     }
 
+    public void SetComposite(IReadOnlyList<ModelRenderPart> parts, string modelName)
+    {
+        _parts = parts;
+        _modelName = modelName;
+        _yaw = -0.55f;
+        _pitch = 0.28f;
+        _zoom = 0.86f;
+        TextureModeButton.IsEnabled = parts.Any(part => part.Texture is not null);
+        SetMode(TextureModeButton.IsEnabled ? ModelRenderMode.Textured : ModelRenderMode.Solid);
+        EmptyText.Visibility = parts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateHint();
+        ScheduleRender();
+    }
+
     public void SetTexture(DecodedTexture? texture, string? textureName, bool selectTexturedMode = true)
     {
-        _texture = texture;
-        _textureName = textureName ?? string.Empty;
+        if (_parts.Count == 0) return;
+        ModelRenderPart part = _parts[0];
+        _parts = new[] { part with { Texture = texture, TextureName = textureName ?? string.Empty } };
         TextureModeButton.IsEnabled = texture is not null;
         if (texture is not null && selectTexturedMode) SetMode(ModelRenderMode.Textured);
         else if (texture is null && _mode == ModelRenderMode.Textured) SetMode(ModelRenderMode.Solid);
@@ -63,7 +78,7 @@ public sealed partial class ModelPreviewControl : UserControl
 
     private void SetMode(ModelRenderMode mode)
     {
-        if (mode == ModelRenderMode.Textured && _texture is null) mode = ModelRenderMode.Solid;
+        if (mode == ModelRenderMode.Textured && !_parts.Any(part => part.Texture is not null)) mode = ModelRenderMode.Solid;
         _mode = mode;
         TextureModeButton.IsChecked = mode == ModelRenderMode.Textured;
         SolidModeButton.IsChecked = mode == ModelRenderMode.Solid;
@@ -74,7 +89,7 @@ public sealed partial class ModelPreviewControl : UserControl
 
     private void UpdateHint()
     {
-        if (_mesh is null)
+        if (_parts.Count == 0)
         {
             HintText.Text = "模型预览 · 拖拽旋转 · 滚轮缩放";
             return;
@@ -82,11 +97,16 @@ public sealed partial class ModelPreviewControl : UserControl
 
         string mode = _mode switch
         {
-            ModelRenderMode.Textured => string.IsNullOrWhiteSpace(_textureName) ? "贴图" : $"贴图 · {_textureName}",
+            ModelRenderMode.Textured when _parts.Count == 1 && !string.IsNullOrWhiteSpace(_parts[0].TextureName) => $"贴图 · {_parts[0].TextureName}",
+            ModelRenderMode.Textured => "贴图",
             ModelRenderMode.Wireframe => "线框",
             _ => "实体着色"
         };
-        HintText.Text = $"{mode} · {_mesh.Vertices.Count:N0} 顶点 · {_mesh.DeclaredTriangleCount:N0} 面";
+        int vertices = _parts.Sum(part => part.Mesh.Vertices.Count);
+        long triangles = _parts.Sum(part => (long)part.Mesh.DeclaredTriangleCount);
+        string parts = _parts.Count > 1 ? $" · {_parts.Count:N0} 部件" : string.Empty;
+        string name = string.IsNullOrWhiteSpace(_modelName) ? string.Empty : $"{_modelName} · ";
+        HintText.Text = $"{name}{mode}{parts} · {vertices:N0} 顶点 · {triangles:N0} 面";
     }
 
     private void ScheduleRender()
@@ -102,7 +122,7 @@ public sealed partial class ModelPreviewControl : UserControl
 
     private void RenderMesh()
     {
-        if (_mesh is null || Surface.ActualWidth < 20 || Surface.ActualHeight < 20)
+        if (_parts.Count == 0 || Surface.ActualWidth < 20 || Surface.ActualHeight < 20)
         {
             RasterImage.Source = null;
             return;
@@ -111,7 +131,7 @@ public sealed partial class ModelPreviewControl : UserControl
         double rasterScale = Math.Min(1d, MaximumRasterDimension / Math.Max(Surface.ActualWidth, Surface.ActualHeight));
         int width = Math.Max(1, (int)Math.Round(Surface.ActualWidth * rasterScale));
         int height = Math.Max(1, (int)Math.Round(Surface.ActualHeight * rasterScale));
-        byte[] pixels = RenderPixels(_mesh, _texture, _mode, width, height);
+        byte[] pixels = RenderPixels(_parts, _mode, width, height);
 
         var bitmap = new WriteableBitmap(width, height);
         using (Stream stream = bitmap.PixelBuffer.AsStream())
@@ -120,7 +140,7 @@ public sealed partial class ModelPreviewControl : UserControl
         RasterImage.Source = bitmap;
     }
 
-    private byte[] RenderPixels(PmfMesh mesh, DecodedTexture? texture, ModelRenderMode mode, int width, int height)
+    private byte[] RenderPixels(IReadOnlyList<ModelRenderPart> parts, ModelRenderMode mode, int width, int height)
     {
         byte[] pixels = new byte[checked(width * height * 4)];
         for (int i = 0; i < pixels.Length; i += 4)
@@ -131,10 +151,9 @@ public sealed partial class ModelPreviewControl : UserControl
             pixels[i + 3] = 255;
         }
 
-        IReadOnlyList<Vector3> source = mesh.Vertices;
-        Vector3 min = source[0];
-        Vector3 max = source[0];
-        foreach (Vector3 vertex in source)
+        Vector3 min = parts[0].Mesh.Vertices[0];
+        Vector3 max = min;
+        foreach (Vector3 vertex in parts.SelectMany(part => part.Mesh.Vertices))
         {
             min = Vector3.Min(min, vertex);
             max = Vector3.Max(max, vertex);
@@ -146,50 +165,57 @@ public sealed partial class ModelPreviewControl : UserControl
         float scale = Math.Min(width, height) * 0.82f / extent * _zoom;
         float centerX = width * 0.5f;
         float centerY = height * 0.52f;
-        var transformed = new Vector3[source.Count];
-        var projected = new Vector2[source.Count];
-        for (int i = 0; i < source.Count; i++)
+        float[]? depthBuffer = mode == ModelRenderMode.Wireframe
+            ? null
+            : Enumerable.Repeat(float.NegativeInfinity, width * height).ToArray();
+        Vector3 light = Vector3.Normalize(new Vector3(-0.35f, 0.65f, 0.9f));
+        foreach (ModelRenderPart part in parts)
         {
-            transformed[i] = Vector3.Transform(source[i] - center, rotation);
-            projected[i] = new Vector2(centerX + transformed[i].X * scale, centerY - transformed[i].Y * scale);
-        }
+            PmfMesh mesh = part.Mesh;
+            IReadOnlyList<Vector3> source = mesh.Vertices;
+            var transformed = new Vector3[source.Count];
+            var projected = new Vector2[source.Count];
+            for (int i = 0; i < source.Count; i++)
+            {
+                transformed[i] = Vector3.Transform(source[i] - center, rotation);
+                projected[i] = new Vector2(centerX + transformed[i].X * scale, centerY - transformed[i].Y * scale);
+            }
 
-        IReadOnlyList<ushort> indices = mesh.Indices;
-        if (mode == ModelRenderMode.Wireframe)
-        {
+            IReadOnlyList<ushort> indices = mesh.Indices;
+            if (mode == ModelRenderMode.Wireframe)
+            {
+                for (int offset = 0; offset + 2 < indices.Count; offset += 3)
+                {
+                    Vector2 a = projected[indices[offset]];
+                    Vector2 b = projected[indices[offset + 1]];
+                    Vector2 c = projected[indices[offset + 2]];
+                    DrawLine(pixels, width, height, a, b);
+                    DrawLine(pixels, width, height, b, c);
+                    DrawLine(pixels, width, height, c, a);
+                }
+                continue;
+            }
+
+            bool useTexture = mode == ModelRenderMode.Textured && part.Texture is not null && mesh.TextureCoordinates.Count == source.Count;
             for (int offset = 0; offset + 2 < indices.Count; offset += 3)
             {
-                Vector2 a = projected[indices[offset]];
-                Vector2 b = projected[indices[offset + 1]];
-                Vector2 c = projected[indices[offset + 2]];
-                DrawLine(pixels, width, height, a, b);
-                DrawLine(pixels, width, height, b, c);
-                DrawLine(pixels, width, height, c, a);
+                int ia = indices[offset];
+                int ib = indices[offset + 1];
+                int ic = indices[offset + 2];
+                Vector3 normal = Vector3.Cross(transformed[ib] - transformed[ia], transformed[ic] - transformed[ia]);
+                if (normal.LengthSquared() < 0.0000001f) continue;
+                normal = Vector3.Normalize(normal);
+                float brightness = 0.28f + 0.72f * MathF.Abs(Vector3.Dot(normal, light));
+                RasterizeTriangle(
+                    pixels, depthBuffer!, width, height,
+                    projected[ia], projected[ib], projected[ic],
+                    transformed[ia].Z, transformed[ib].Z, transformed[ic].Z,
+                    useTexture ? mesh.TextureCoordinates[ia] : default,
+                    useTexture ? mesh.TextureCoordinates[ib] : default,
+                    useTexture ? mesh.TextureCoordinates[ic] : default,
+                    useTexture ? part.Texture : null,
+                    brightness);
             }
-            return pixels;
-        }
-
-        var depthBuffer = Enumerable.Repeat(float.NegativeInfinity, width * height).ToArray();
-        Vector3 light = Vector3.Normalize(new Vector3(-0.35f, 0.65f, 0.9f));
-        bool useTexture = mode == ModelRenderMode.Textured && texture is not null && mesh.TextureCoordinates.Count == source.Count;
-        for (int offset = 0; offset + 2 < indices.Count; offset += 3)
-        {
-            int ia = indices[offset];
-            int ib = indices[offset + 1];
-            int ic = indices[offset + 2];
-            Vector3 normal = Vector3.Cross(transformed[ib] - transformed[ia], transformed[ic] - transformed[ia]);
-            if (normal.LengthSquared() < 0.0000001f) continue;
-            normal = Vector3.Normalize(normal);
-            float brightness = 0.28f + 0.72f * MathF.Abs(Vector3.Dot(normal, light));
-            RasterizeTriangle(
-                pixels, depthBuffer, width, height,
-                projected[ia], projected[ib], projected[ic],
-                transformed[ia].Z, transformed[ib].Z, transformed[ic].Z,
-                useTexture ? mesh.TextureCoordinates[ia] : default,
-                useTexture ? mesh.TextureCoordinates[ib] : default,
-                useTexture ? mesh.TextureCoordinates[ic] : default,
-                useTexture ? texture : null,
-                brightness);
         }
         return pixels;
     }
