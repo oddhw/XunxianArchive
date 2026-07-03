@@ -48,6 +48,8 @@ public static class SelfTest
             return DescribeMesh(mesh) + "，OBJ 导出正确";
         });
         CheckFile(report, root, "cha.dpk", ".pmf", data => DescribeMesh(PmfParser.Parse(data)));
+        CheckModelTexture(report, root, "obj.dpk", "share/mesh/gx_jzjcxjgwkc_004_h.pmf");
+        CheckModelTexture(report, root, "cha.dpk", "share/mesh/cw/mz635_mz_001.pmf");
         report.AppendLine("SELF-TEST PASSED");
         return report.ToString();
     }
@@ -64,6 +66,19 @@ public static class SelfTest
         Models.DpkEntry sample = entries.First(entry => entry.Path.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
         byte[] data = reader.Extract(sample);
         report.AppendLine($"{archiveName}: {entries.Count:N0} 项；{sample.Path}；{data.Length:N0} 字节；{validate(data)}");
+    }
+
+    private static void CheckModelTexture(StringBuilder report, string root, string archiveName, string modelPath)
+    {
+        using var workspace = new DpkWorkspace();
+        workspace.OpenSingleArchive(Path.Combine(root, archiveName));
+        AssetEntry model = workspace.Assets.First(asset =>
+            asset.Kind == AssetKind.Model && asset.Entry.Path.Equals(modelPath, StringComparison.OrdinalIgnoreCase));
+        IReadOnlyList<ModelTextureBinding> bindings = workspace.ResolveModelTextures(model);
+        ModelTextureBinding baseMap = bindings.First(binding =>
+            binding.MapType.StartsWith("BaseMap", StringComparison.OrdinalIgnoreCase));
+        DecodedTexture texture = DdsDecoder.Decode(workspace.Extract(baseMap.TextureAsset));
+        report.AppendLine($"{archiveName} 贴图链: {model.Name} → {baseMap.ConfigPath} → {baseMap.TextureAsset.Entry.Path}；{texture.Width}×{texture.Height} {texture.Format}");
     }
 
     private static string DescribeMesh(Models.PmfMesh mesh) =>

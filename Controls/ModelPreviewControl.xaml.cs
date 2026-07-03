@@ -1,26 +1,34 @@
 using System.Numerics;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using XunxianDpkViewer.Models;
 
 namespace XunxianDpkViewer.Controls;
 
+public enum ModelRenderMode
+{
+    Textured,
+    Solid,
+    Wireframe
+}
+
 public sealed partial class ModelPreviewControl : UserControl
 {
-    private const int ShadeCount = 12;
-    private const int TrianglesPerLayer = 600;
+    private const int MaximumRasterDimension = 900;
     private PmfMesh? _mesh;
+    private DecodedTexture? _texture;
+    private string _textureName = string.Empty;
+    private ModelRenderMode _mode = ModelRenderMode.Solid;
     private float _yaw = -0.55f;
     private float _pitch = 0.28f;
     private float _zoom = 0.86f;
     private Windows.Foundation.Point _lastPointer;
     private uint? _capturedPointerId;
     private bool _renderQueued;
-
-    private sealed record RenderedTriangle(float Depth, int Shade, Vector2 A, Vector2 B, Vector2 C);
 
     public ModelPreviewControl()
     {
@@ -30,14 +38,55 @@ public sealed partial class ModelPreviewControl : UserControl
     public void SetMesh(PmfMesh? mesh)
     {
         _mesh = mesh;
+        _texture = null;
+        _textureName = string.Empty;
         _yaw = -0.55f;
         _pitch = 0.28f;
         _zoom = 0.86f;
+        TextureModeButton.IsEnabled = false;
+        SetMode(ModelRenderMode.Solid);
         EmptyText.Visibility = mesh is null ? Visibility.Visible : Visibility.Collapsed;
-        HintText.Text = mesh is null
-            ? "实体预览 · 拖拽旋转 · 滚轮缩放"
-            : $"实体预览 · {mesh.Vertices.Count:N0} 顶点 · {mesh.DeclaredTriangleCount:N0} 面";
+        UpdateHint();
         ScheduleRender();
+    }
+
+    public void SetTexture(DecodedTexture? texture, string? textureName, bool selectTexturedMode = true)
+    {
+        _texture = texture;
+        _textureName = textureName ?? string.Empty;
+        TextureModeButton.IsEnabled = texture is not null;
+        if (texture is not null && selectTexturedMode) SetMode(ModelRenderMode.Textured);
+        else if (texture is null && _mode == ModelRenderMode.Textured) SetMode(ModelRenderMode.Solid);
+        UpdateHint();
+        ScheduleRender();
+    }
+
+    private void SetMode(ModelRenderMode mode)
+    {
+        if (mode == ModelRenderMode.Textured && _texture is null) mode = ModelRenderMode.Solid;
+        _mode = mode;
+        TextureModeButton.IsChecked = mode == ModelRenderMode.Textured;
+        SolidModeButton.IsChecked = mode == ModelRenderMode.Solid;
+        WireframeModeButton.IsChecked = mode == ModelRenderMode.Wireframe;
+        UpdateHint();
+        ScheduleRender();
+    }
+
+    private void UpdateHint()
+    {
+        if (_mesh is null)
+        {
+            HintText.Text = "模型预览 · 拖拽旋转 · 滚轮缩放";
+            return;
+        }
+
+        string mode = _mode switch
+        {
+            ModelRenderMode.Textured => string.IsNullOrWhiteSpace(_textureName) ? "贴图" : $"贴图 · {_textureName}",
+            ModelRenderMode.Wireframe => "线框",
+            _ => "实体着色"
+        };
+        HintText.Text = $"{mode} · {_mesh.Vertices.Count:N0} 顶点 · {_mesh.DeclaredTriangleCount:N0} 面";
     }
 
     private void ScheduleRender()
@@ -53,10 +102,36 @@ public sealed partial class ModelPreviewControl : UserControl
 
     private void RenderMesh()
     {
-        Surface.Children.Clear();
-        if (_mesh is null || Surface.ActualWidth < 20 || Surface.ActualHeight < 20) return;
+        if (_mesh is null || Surface.ActualWidth < 20 || Surface.ActualHeight < 20)
+        {
+            RasterImage.Source = null;
+            return;
+        }
 
-        IReadOnlyList<Vector3> source = _mesh.Vertices;
+        double rasterScale = Math.Min(1d, MaximumRasterDimension / Math.Max(Surface.ActualWidth, Surface.ActualHeight));
+        int width = Math.Max(1, (int)Math.Round(Surface.ActualWidth * rasterScale));
+        int height = Math.Max(1, (int)Math.Round(Surface.ActualHeight * rasterScale));
+        byte[] pixels = RenderPixels(_mesh, _texture, _mode, width, height);
+
+        var bitmap = new WriteableBitmap(width, height);
+        using (Stream stream = bitmap.PixelBuffer.AsStream())
+            stream.Write(pixels, 0, pixels.Length);
+        bitmap.Invalidate();
+        RasterImage.Source = bitmap;
+    }
+
+    private byte[] RenderPixels(PmfMesh mesh, DecodedTexture? texture, ModelRenderMode mode, int width, int height)
+    {
+        byte[] pixels = new byte[checked(width * height * 4)];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 32;
+            pixels[i + 1] = 21;
+            pixels[i + 2] = 13;
+            pixels[i + 3] = 255;
+        }
+
+        IReadOnlyList<Vector3> source = mesh.Vertices;
         Vector3 min = source[0];
         Vector3 max = source[0];
         foreach (Vector3 vertex in source)
@@ -68,22 +143,35 @@ public sealed partial class ModelPreviewControl : UserControl
         Vector3 center = (min + max) * 0.5f;
         float extent = Math.Max(0.0001f, Math.Max(max.X - min.X, Math.Max(max.Y - min.Y, max.Z - min.Z)));
         Matrix4x4 rotation = Matrix4x4.CreateRotationY(_yaw) * Matrix4x4.CreateRotationX(_pitch);
-        float scale = (float)(Math.Min(Surface.ActualWidth, Surface.ActualHeight) * 0.82 / extent) * _zoom;
-        float centerX = (float)Surface.ActualWidth * 0.5f;
-        float centerY = (float)Surface.ActualHeight * 0.52f;
+        float scale = Math.Min(width, height) * 0.82f / extent * _zoom;
+        float centerX = width * 0.5f;
+        float centerY = height * 0.52f;
         var transformed = new Vector3[source.Count];
         var projected = new Vector2[source.Count];
         for (int i = 0; i < source.Count; i++)
         {
             transformed[i] = Vector3.Transform(source[i] - center, rotation);
-            projected[i] = new Vector2(
-                centerX + transformed[i].X * scale,
-                centerY - transformed[i].Y * scale);
+            projected[i] = new Vector2(centerX + transformed[i].X * scale, centerY - transformed[i].Y * scale);
         }
 
+        IReadOnlyList<ushort> indices = mesh.Indices;
+        if (mode == ModelRenderMode.Wireframe)
+        {
+            for (int offset = 0; offset + 2 < indices.Count; offset += 3)
+            {
+                Vector2 a = projected[indices[offset]];
+                Vector2 b = projected[indices[offset + 1]];
+                Vector2 c = projected[indices[offset + 2]];
+                DrawLine(pixels, width, height, a, b);
+                DrawLine(pixels, width, height, b, c);
+                DrawLine(pixels, width, height, c, a);
+            }
+            return pixels;
+        }
+
+        var depthBuffer = Enumerable.Repeat(float.NegativeInfinity, width * height).ToArray();
         Vector3 light = Vector3.Normalize(new Vector3(-0.35f, 0.65f, 0.9f));
-        IReadOnlyList<ushort> indices = _mesh.Indices;
-        var triangles = new List<RenderedTriangle>(indices.Count / 3);
+        bool useTexture = mode == ModelRenderMode.Textured && texture is not null && mesh.TextureCoordinates.Count == source.Count;
         for (int offset = 0; offset + 2 < indices.Count; offset += 3)
         {
             int ia = indices[offset];
@@ -92,56 +180,124 @@ public sealed partial class ModelPreviewControl : UserControl
             Vector3 normal = Vector3.Cross(transformed[ib] - transformed[ia], transformed[ic] - transformed[ia]);
             if (normal.LengthSquared() < 0.0000001f) continue;
             normal = Vector3.Normalize(normal);
-            float brightness = 0.18f + 0.82f * MathF.Abs(Vector3.Dot(normal, light));
-            int shade = Math.Clamp((int)(brightness * (ShadeCount - 1)), 0, ShadeCount - 1);
-            float depth = (transformed[ia].Z + transformed[ib].Z + transformed[ic].Z) / 3f;
-            triangles.Add(new RenderedTriangle(depth, shade, projected[ia], projected[ib], projected[ic]));
+            float brightness = 0.28f + 0.72f * MathF.Abs(Vector3.Dot(normal, light));
+            RasterizeTriangle(
+                pixels, depthBuffer, width, height,
+                projected[ia], projected[ib], projected[ic],
+                transformed[ia].Z, transformed[ib].Z, transformed[ic].Z,
+                useTexture ? mesh.TextureCoordinates[ia] : default,
+                useTexture ? mesh.TextureCoordinates[ib] : default,
+                useTexture ? mesh.TextureCoordinates[ic] : default,
+                useTexture ? texture : null,
+                brightness);
         }
+        return pixels;
+    }
 
-        if (triangles.Count == 0)
+    private static void RasterizeTriangle(
+        byte[] pixels,
+        float[] depthBuffer,
+        int width,
+        int height,
+        Vector2 a,
+        Vector2 b,
+        Vector2 c,
+        float za,
+        float zb,
+        float zc,
+        Vector2 uva,
+        Vector2 uvb,
+        Vector2 uvc,
+        DecodedTexture? texture,
+        float brightness)
+    {
+        float area = Edge(a, b, c);
+        if (MathF.Abs(area) < 0.0001f) return;
+        int minX = Math.Clamp((int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X))), 0, width - 1);
+        int maxX = Math.Clamp((int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X))), 0, width - 1);
+        int minY = Math.Clamp((int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y))), 0, height - 1);
+        int maxY = Math.Clamp((int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y))), 0, height - 1);
+        for (int y = minY; y <= maxY; y++)
         {
-            HintText.Text = "实体渲染失败：模型没有有效三角面";
-            return;
-        }
-
-        triangles.Sort((left, right) => left.Depth.CompareTo(right.Depth));
-        for (int layerStart = 0; layerStart < triangles.Count; layerStart += TrianglesPerLayer)
-        {
-            int layerEnd = Math.Min(layerStart + TrianglesPerLayer, triangles.Count);
-            for (int shade = 0; shade < ShadeCount; shade++)
+            for (int x = minX; x <= maxX; x++)
             {
-                var geometry = new PathGeometry { FillRule = FillRule.Nonzero };
-                for (int index = layerStart; index < layerEnd; index++)
-                {
-                    RenderedTriangle triangle = triangles[index];
-                    if (triangle.Shade != shade) continue;
-                    var figure = new PathFigure
-                    {
-                        StartPoint = ToPoint(triangle.A),
-                        IsClosed = true,
-                        IsFilled = true
-                    };
-                    figure.Segments.Add(new LineSegment { Point = ToPoint(triangle.B) });
-                    figure.Segments.Add(new LineSegment { Point = ToPoint(triangle.C) });
-                    geometry.Figures.Add(figure);
-                }
-                if (geometry.Figures.Count == 0) continue;
+                var point = new Vector2(x + 0.5f, y + 0.5f);
+                float wa = Edge(b, c, point) / area;
+                float wb = Edge(c, a, point) / area;
+                float wc = Edge(a, b, point) / area;
+                if (wa < -0.0001f || wb < -0.0001f || wc < -0.0001f) continue;
 
-                float amount = shade / (float)(ShadeCount - 1);
-                byte red = (byte)(48 + amount * 72);
-                byte green = (byte)(86 + amount * 92);
-                byte blue = (byte)(150 + amount * 86);
-                Surface.Children.Add(new Microsoft.UI.Xaml.Shapes.Path
+                int pixelIndex = y * width + x;
+                float depth = wa * za + wb * zb + wc * zc;
+                if (depth <= depthBuffer[pixelIndex]) continue;
+
+                byte blue;
+                byte green;
+                byte red;
+                byte alpha = 255;
+                if (texture is not null)
                 {
-                    Data = geometry,
-                    Fill = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, red, green, blue))
-                });
+                    Vector2 uv = wa * uva + wb * uvb + wc * uvc;
+                    float wrappedU = uv.X - MathF.Floor(uv.X);
+                    float wrappedV = uv.Y - MathF.Floor(uv.Y);
+                    int textureX = Math.Clamp((int)(wrappedU * texture.Width), 0, texture.Width - 1);
+                    int textureY = Math.Clamp((int)(wrappedV * texture.Height), 0, texture.Height - 1);
+                    int textureOffset = (textureY * texture.Width + textureX) * 4;
+                    blue = (byte)(texture.BgraPixels[textureOffset] * brightness);
+                    green = (byte)(texture.BgraPixels[textureOffset + 1] * brightness);
+                    red = (byte)(texture.BgraPixels[textureOffset + 2] * brightness);
+                    alpha = texture.BgraPixels[textureOffset + 3];
+                    if (alpha < 8) continue;
+                }
+                else
+                {
+                    blue = (byte)(214 * brightness);
+                    green = (byte)(151 * brightness);
+                    red = (byte)(76 * brightness);
+                }
+
+                depthBuffer[pixelIndex] = depth;
+                int target = pixelIndex * 4;
+                if (alpha >= 250)
+                {
+                    pixels[target] = blue;
+                    pixels[target + 1] = green;
+                    pixels[target + 2] = red;
+                }
+                else
+                {
+                    int inverse = 255 - alpha;
+                    pixels[target] = (byte)((blue * alpha + pixels[target] * inverse) / 255);
+                    pixels[target + 1] = (byte)((green * alpha + pixels[target + 1] * inverse) / 255);
+                    pixels[target + 2] = (byte)((red * alpha + pixels[target + 2] * inverse) / 255);
+                }
             }
         }
     }
 
-    private static Windows.Foundation.Point ToPoint(Vector2 point) => new(point.X, point.Y);
+    private static float Edge(Vector2 a, Vector2 b, Vector2 point) =>
+        (point.X - a.X) * (b.Y - a.Y) - (point.Y - a.Y) * (b.X - a.X);
 
+    private static void DrawLine(byte[] pixels, int width, int height, Vector2 start, Vector2 end)
+    {
+        int steps = Math.Max(1, (int)MathF.Ceiling(Vector2.Distance(start, end)));
+        for (int i = 0; i <= steps; i++)
+        {
+            float amount = i / (float)steps;
+            int x = (int)MathF.Round(start.X + (end.X - start.X) * amount);
+            int y = (int)MathF.Round(start.Y + (end.Y - start.Y) * amount);
+            if ((uint)x >= width || (uint)y >= height) continue;
+            int target = (y * width + x) * 4;
+            pixels[target] = 255;
+            pixels[target + 1] = 181;
+            pixels[target + 2] = 91;
+            pixels[target + 3] = 255;
+        }
+    }
+
+    private void TextureModeButton_Click(object sender, RoutedEventArgs e) => SetMode(ModelRenderMode.Textured);
+    private void SolidModeButton_Click(object sender, RoutedEventArgs e) => SetMode(ModelRenderMode.Solid);
+    private void WireframeModeButton_Click(object sender, RoutedEventArgs e) => SetMode(ModelRenderMode.Wireframe);
     private void Surface_SizeChanged(object sender, SizeChangedEventArgs e) => ScheduleRender();
 
     private void Surface_PointerPressed(object sender, PointerRoutedEventArgs e)

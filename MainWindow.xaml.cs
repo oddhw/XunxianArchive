@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window
     private bool _modelExpanded;
     private bool _buildingFolderTree;
     private bool _multiSelectMode;
+    private bool _settingModelTextureSelection;
     private FolderNodeInfo? _selectedFolder;
 
     public MainWindow()
@@ -45,7 +46,10 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = false;
         string iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "Xunxian.ico");
         if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
-        AppWindow.Resize(new SizeInt32(1600, 960));
+        DisplayArea displayArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+        AppWindow.Resize(new SizeInt32(
+            Math.Min(1600, Math.Max(1100, displayArea.WorkArea.Width - 32)),
+            Math.Min(960, Math.Max(720, displayArea.WorkArea.Height - 32))));
 
         ImageGrid.ItemsSource = _items;
         AssetList.ItemsSource = _items;
@@ -193,10 +197,17 @@ public sealed partial class MainWindow : Window
             {
                 [string.Empty] = root
             };
-            IEnumerable<string> directories = archive
-                .Select(asset => GetInternalDirectory(asset.Entry.Path))
-                .Where(path => path.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+            var directorySet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string assetDirectory in archive.Select(asset => GetInternalDirectory(asset.Entry.Path)))
+            {
+                string directory = assetDirectory;
+                while (directory.Length > 0 && directorySet.Add(directory))
+                {
+                    int parentSlash = directory.LastIndexOf('/');
+                    directory = parentSlash < 0 ? string.Empty : directory[..parentSlash];
+                }
+            }
+            IEnumerable<string> directories = directorySet
                 .OrderBy(path => path.Count(character => character == '/'))
                 .ThenBy(path => path, StringComparer.OrdinalIgnoreCase);
 
@@ -220,6 +231,8 @@ public sealed partial class MainWindow : Window
             {
                 preferredNode = categoryDefault;
                 categoryDefault.IsExpanded = true;
+                for (TreeViewNode? ancestor = categoryDefault.Parent; ancestor is not null; ancestor = ancestor.Parent)
+                    ancestor.IsExpanded = true;
             }
         }
 
@@ -365,15 +378,47 @@ public sealed partial class MainWindow : Window
             }
             else if (item.Asset.Kind == AssetKind.Model)
             {
-                PmfMesh mesh = await Task.Run(() => PmfParser.Parse(data));
+                (PmfMesh mesh, IReadOnlyList<ModelTextureBinding> textures) = await Task.Run(() =>
+                    (PmfParser.Parse(data), _workspace.ResolveModelTextures(item.Asset)));
                 if (_selectedAsset != item.Asset) return;
                 _modelPreview.SetMesh(mesh);
-                SelectedMetadataText.Text = $"PMF v{mesh.Version} · {mesh.Vertices.Count:N0} 顶点 · {mesh.DeclaredTriangleCount:N0} 三角面 · {mesh.UvChannelCount} UV 通道 · {FormatBytes(data.Length)}";
+                ModelTextureSelector.Visibility = Visibility.Visible;
+                _settingModelTextureSelection = true;
+                ModelTextureComboBox.ItemsSource = textures;
+                ModelTextureComboBox.SelectedIndex = textures.Count > 0 ? 0 : -1;
+                _settingModelTextureSelection = false;
+                SelectedMetadataText.Text = $"PMF v{mesh.Version} · {mesh.Vertices.Count:N0} 顶点 · {mesh.DeclaredTriangleCount:N0} 三角面 · {mesh.UvChannelCount} UV 通道 · {textures.Count:N0} 个关联贴图 · {FormatBytes(data.Length)}";
+                if (textures.Count > 0) await LoadModelTextureAsync(item.Asset, textures[0]);
             }
         }
         catch (Exception ex)
         {
             SelectedMetadataText.Text = $"预览失败：{ex.Message}";
+        }
+    }
+
+    private async void ModelTextureComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_settingModelTextureSelection || _selectedAsset?.Kind != AssetKind.Model ||
+            ModelTextureComboBox.SelectedItem is not ModelTextureBinding binding) return;
+        await LoadModelTextureAsync(_selectedAsset, binding);
+    }
+
+    private async Task LoadModelTextureAsync(AssetEntry modelAsset, ModelTextureBinding binding)
+    {
+        try
+        {
+            byte[] textureBytes = await Task.Run(() => _workspace.Extract(binding.TextureAsset));
+            DecodedTexture texture = await Task.Run(() => DdsDecoder.Decode(textureBytes));
+            if (_selectedAsset != modelAsset || !Equals(ModelTextureComboBox.SelectedItem, binding)) return;
+            _modelPreview.SetTexture(texture, binding.DisplayName);
+            SelectedMetadataText.Text = $"{SelectedMetadataText.Text.Split(" · 贴图：", StringSplitOptions.None)[0]} · 贴图：{texture.Width}×{texture.Height} {texture.Format}";
+        }
+        catch (Exception ex)
+        {
+            if (_selectedAsset != modelAsset) return;
+            _modelPreview.SetTexture(null, null);
+            SelectedMetadataText.Text = $"贴图预览失败：{ex.Message}；可切换到实体或线框模式";
         }
     }
 
@@ -659,6 +704,8 @@ public sealed partial class MainWindow : Window
         ImagePreviewPanel.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
         SoundPreviewPanel.Visibility = sounds ? Visibility.Visible : Visibility.Collapsed;
         ModelPreviewHost.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
+        ModelTextureSelector.Visibility = Visibility.Collapsed;
+        ModelTextureComboBox.ItemsSource = null;
         ExportModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         ExpandModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         SetMultiSelectMode(false);
@@ -685,7 +732,6 @@ public sealed partial class MainWindow : Window
 
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
         _searchTimer.Stop();
         _searchTimer.Start();
     }

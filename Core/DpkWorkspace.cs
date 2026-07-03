@@ -16,6 +16,7 @@ public sealed class DpkWorkspace : IDisposable
 
     private readonly Dictionary<string, DpkReader> _readers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<AssetEntry> _assets = new();
+    private ModelTextureResolver? _modelTextureResolver;
 
     public IReadOnlyList<AssetEntry> Assets => _assets;
     public IReadOnlyCollection<string> ArchivePaths => _readers.Keys;
@@ -25,6 +26,7 @@ public sealed class DpkWorkspace : IDisposable
         foreach (DpkReader reader in _readers.Values) reader.Dispose();
         _readers.Clear();
         _assets.Clear();
+        _modelTextureResolver = null;
     }
 
     public void OpenClientResourceFolder(string folder)
@@ -54,6 +56,9 @@ public sealed class DpkWorkspace : IDisposable
     }
 
     public byte[] Extract(AssetEntry asset) => _readers[asset.ArchivePath].Extract(asset.Entry);
+
+    public IReadOnlyList<ModelTextureBinding> ResolveModelTextures(AssetEntry model) =>
+        (_modelTextureResolver ??= new ModelTextureResolver(this)).Resolve(model);
 
     public void ExtractTo(AssetEntry asset, string rootFolder)
     {

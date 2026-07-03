@@ -5,14 +5,16 @@
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch">
     <Grid Background="{StaticResource SurfaceAltBrush}" CornerRadius="16">
-        <Canvas x:Name="Surface"
-                Background="{StaticResource SurfaceAltBrush}"
-                SizeChanged="Surface_SizeChanged"
-                PointerPressed="Surface_PointerPressed"
-                PointerMoved="Surface_PointerMoved"
-                PointerReleased="Surface_PointerReleased"
-                PointerCanceled="Surface_PointerReleased"
-                PointerWheelChanged="Surface_PointerWheelChanged" />
+        <Grid x:Name="Surface"
+              Background="{StaticResource SurfaceAltBrush}"
+              SizeChanged="Surface_SizeChanged"
+              PointerPressed="Surface_PointerPressed"
+              PointerMoved="Surface_PointerMoved"
+              PointerReleased="Surface_PointerReleased"
+              PointerCanceled="Surface_PointerReleased"
+              PointerWheelChanged="Surface_PointerWheelChanged">
+            <Image x:Name="RasterImage" Stretch="Fill" IsHitTestVisible="False" />
+        </Grid>
         <Border HorizontalAlignment="Left"
                 VerticalAlignment="Top"
                 Margin="14"
@@ -24,6 +26,15 @@
                        Foreground="{StaticResource SecondaryTextBrush}"
                        FontSize="12" />
         </Border>
+        <StackPanel HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="14"
+                    Orientation="Horizontal"
+                    Spacing="6">
+            <ToggleButton x:Name="TextureModeButton" Content="贴图" IsEnabled="False" Click="TextureModeButton_Click" />
+            <ToggleButton x:Name="SolidModeButton" Content="实体" IsChecked="True" Click="SolidModeButton_Click" />
+            <ToggleButton x:Name="WireframeModeButton" Content="线框" Click="WireframeModeButton_Click" />
+        </StackPanel>
         <TextBlock x:Name="EmptyText"
                    Text="选择一个 PMF 模型查看实体预览"
                    Foreground="{StaticResource MutedTextBrush}"
