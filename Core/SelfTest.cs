@@ -51,6 +51,8 @@ public static class SelfTest
         CheckModelTexture(report, root, "obj.dpk", "share/mesh/gx_jzjcxjgwkc_004_h.pmf");
         CheckModelTexture(report, root, "cha.dpk", "share/mesh/cw/mz635_mz_001.pmf");
         CheckCompositeModel(report, root, "cha.dpk", "special/gw_cwbiyiniaoludi_1313");
+        CheckCompositeModel(report, root, "cha.dpk", "special/gw_hlnubing_187");
+        CheckCompleteClientIndex(report, root);
         report.AppendLine("SELF-TEST PASSED");
         return report.ToString();
     }
@@ -92,6 +94,25 @@ public static class SelfTest
             binding.MapType.StartsWith("BaseMap", StringComparison.OrdinalIgnoreCase));
         DecodedTexture texture = DdsDecoder.Decode(workspace.Extract(baseMap.TextureAsset));
         report.AppendLine($"{archiveName} 贴图链: {model.Name} → {baseMap.ConfigPath} → {baseMap.TextureAsset.Entry.Path}；{texture.Width}×{texture.Height} {texture.Format}");
+    }
+
+    private static void CheckCompleteClientIndex(StringBuilder report, string root)
+    {
+        string[] expectedArchives =
+        {
+            "cha.dpk", "font.dpk", "gfx.dpk", "gui.dpk", "movie.dpk", "music.dpk", "obj.dpk",
+            "scn.dpk", "sky.dpk", "sound.dpk", "system.dpk", "terr.dpk", "water.dpk"
+        };
+        using var workspace = new DpkWorkspace();
+        workspace.OpenClientResourceFolder(root);
+        string[] loaded = workspace.ArchivePaths.Select(Path.GetFileName).OfType<string>().ToArray();
+        string[] missing = expectedArchives.Except(loaded, StringComparer.OrdinalIgnoreCase).ToArray();
+        if (missing.Length > 0)
+            throw new InvalidDataException($"未加载 DPK：{string.Join(", ", missing)}");
+        int fonts = workspace.Assets.Count(asset => asset.Kind == AssetKind.Font);
+        if (fonts != 3)
+            throw new InvalidDataException($"font.dpk 应包含 3 个字体，实际识别到 {fonts} 个。");
+        report.AppendLine($"完整客户端索引: {loaded.Length:N0} 个 DPK；{workspace.Assets.Count:N0} 个资源；{fonts:N0} 个 TTF 字体");
     }
 
     private static string DescribeMesh(Models.PmfMesh mesh) =>

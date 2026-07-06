@@ -47,6 +47,12 @@
                 <NavigationViewItem x:Name="ModelNavigationItem" Content="模型" Tag="model" Foreground="{StaticResource PrimaryTextBrush}">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE809;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="字体" Tag="font" Foreground="{StaticResource PrimaryTextBrush}">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D2;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="配置与其他" Tag="other" Foreground="{StaticResource PrimaryTextBrush}">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <NavigationView.Content>
@@ -274,6 +280,17 @@
                                                     Visibility="Collapsed"
                                                     HorizontalContentAlignment="Stretch"
                                                     VerticalContentAlignment="Stretch" />
+                                    <Grid x:Name="GenericPreviewPanel" Visibility="Collapsed">
+                                        <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="14">
+                                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+                                                <Border Width="104" Height="104" CornerRadius="28" Background="{StaticResource AccentSurfaceBrush}">
+                                                    <FontIcon x:Name="GenericPreviewIcon" Glyph="&#xE8A5;" FontSize="44" Foreground="{StaticResource AccentTextBrush}" />
+                                                </Border>
+                                                <TextBlock x:Name="GenericPreviewNameText" Text="选择一个资源文件" Foreground="{StaticResource PrimaryTextBrush}" FontSize="18" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="320" />
+                                                <TextBlock x:Name="GenericPreviewHintText" Text="可查看属性或导出原始文件" Foreground="{StaticResource MutedTextBrush}" TextAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
                                 </Grid>
 
                                 <StackPanel Grid.Row="1" Margin="2,16,2,2" Spacing="8">

@@ -143,7 +143,9 @@ public sealed partial class MainWindow : Window
         int images = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Image);
         int sounds = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Sound);
         int models = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Model);
-        ArchiveSummaryText.Text = $"{_workspace.ArchivePaths.Count} 个包 · {images:N0} 图像 · {sounds:N0} 声音 · {models:N0} 模型";
+        int fonts = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Font);
+        int others = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Other);
+        ArchiveSummaryText.Text = $"{_workspace.ArchivePaths.Count} 个包 · {images:N0} 图像 · {sounds:N0} 声音 · {models:N0} 模型 · {fonts:N0} 字体 · {others:N0} 其他";
         BatchExportButton.IsEnabled = true;
         BuildFolderTree();
         ApplyFilter();
@@ -171,6 +173,8 @@ public sealed partial class MainWindow : Window
             AssetKind.Image => "gui.dpk",
             AssetKind.Sound => "sound.dpk",
             AssetKind.Model => "obj.dpk",
+            AssetKind.Font => "font.dpk",
+            AssetKind.Other => "gfx.dpk",
             _ => string.Empty
         };
         string preferredPath = _currentKind switch
@@ -417,6 +421,15 @@ public sealed partial class MainWindow : Window
                 SelectedMetadataText.Text = $"PMF v{mesh.Version} · {mesh.Vertices.Count:N0} 顶点 · {mesh.DeclaredTriangleCount:N0} 三角面 · {mesh.UvChannelCount} UV 通道 · {textures.Count:N0} 个关联贴图 · {FormatBytes(data.Length)}";
                 if (textures.Count > 0) await LoadModelTextureAsync(asset, textures[0]);
             }
+            else
+            {
+                GenericPreviewNameText.Text = asset.Name;
+                GenericPreviewIcon.Glyph = asset.Kind == AssetKind.Font ? "\uE8D2" : "\uE8A5";
+                GenericPreviewHintText.Text = asset.Kind == AssetKind.Font
+                    ? "TrueType/OpenType 字体资源，可导出后安装或检查字形"
+                    : "配置、场景、特效或影片资源，可查看属性并导出原始文件";
+                SelectedMetadataText.Text = $"{asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
+            }
         }
         catch (Exception ex)
         {
@@ -591,6 +604,7 @@ public sealed partial class MainWindow : Window
                 AssetKind.Image => "图像",
                 AssetKind.Sound => "声音",
                 AssetKind.Model => "模型",
+                AssetKind.Font => "字体",
                 _ => "其他"
             };
             string details =
@@ -738,11 +752,14 @@ public sealed partial class MainWindow : Window
 
     private void CategoryNavigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (args.SelectedItemContainer?.Tag is not string tag) return;
+        NavigationViewItemBase? selectedItem = args.SelectedItem as NavigationViewItemBase ?? args.SelectedItemContainer;
+        if (selectedItem?.Tag is not string tag) return;
         _currentKind = tag switch
         {
             "sound" => AssetKind.Sound,
             "model" => AssetKind.Model,
+            "font" => AssetKind.Font,
+            "other" => AssetKind.Other,
             _ => AssetKind.Image
         };
         SearchBox.Text = string.Empty;
@@ -756,18 +773,38 @@ public sealed partial class MainWindow : Window
         bool images = _currentKind == AssetKind.Image;
         bool sounds = _currentKind == AssetKind.Sound;
         bool models = _currentKind == AssetKind.Model;
-        PageTitleText.Text = images ? "图标与贴图" : sounds ? "声音" : "模型";
-        PageDescriptionText.Text = images
-            ? "浏览 GUI 图标、装备图和 DDS 场景贴图"
-            : sounds
-                ? "直接试听 OGG 音乐、环境音与 WAV 音效"
-                : "大尺寸实体预览 PMF 模型，并可转换导出为 OBJ";
-        SearchBox.PlaceholderText = images ? "搜索图标名称或路径" : sounds ? "搜索音效、音乐或路径" : "搜索模型名称或路径";
+        bool fonts = _currentKind == AssetKind.Font;
+        bool others = _currentKind == AssetKind.Other;
+        PageTitleText.Text = _currentKind switch
+        {
+            AssetKind.Image => "图标与贴图",
+            AssetKind.Sound => "声音",
+            AssetKind.Model => "模型",
+            AssetKind.Font => "字体",
+            _ => "配置与其他"
+        };
+        PageDescriptionText.Text = _currentKind switch
+        {
+            AssetKind.Image => "浏览 GUI 图标、装备图和 DDS 场景贴图",
+            AssetKind.Sound => "直接试听 OGG 音乐、环境音与 WAV 音效",
+            AssetKind.Model => "大尺寸实体预览 PMF 模型，并可转换导出为 OBJ",
+            AssetKind.Font => "浏览 font.dpk 内的 TTF、OTF 和 TTC 字体资源",
+            _ => "浏览特效、场景、地形、天空、影片及各类配置文件"
+        };
+        SearchBox.PlaceholderText = _currentKind switch
+        {
+            AssetKind.Image => "搜索图标名称或路径",
+            AssetKind.Sound => "搜索音效、音乐或路径",
+            AssetKind.Model => "搜索模型名称或路径",
+            AssetKind.Font => "搜索字体名称或路径",
+            _ => "搜索配置、特效、场景或路径"
+        };
         ImageGrid.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
         AssetList.Visibility = images ? Visibility.Collapsed : Visibility.Visible;
         ImagePreviewPanel.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
         SoundPreviewPanel.Visibility = sounds ? Visibility.Visible : Visibility.Collapsed;
         ModelPreviewHost.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
+        GenericPreviewPanel.Visibility = fonts || others ? Visibility.Visible : Visibility.Collapsed;
         ModelTextureSelector.Visibility = Visibility.Collapsed;
         ModelTextureComboBox.ItemsSource = null;
         ExportModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
@@ -791,7 +828,14 @@ public sealed partial class MainWindow : Window
         PropertiesButton.IsEnabled = false;
         ExportModelButton.IsEnabled = false;
         SelectedNameText.Text = "尚未选择资源";
-        SelectedPathText.Text = images ? "从左侧选择一张图像" : sounds ? "从左侧选择一个声音" : "从左侧选择一个 PMF 模型";
+        SelectedPathText.Text = _currentKind switch
+        {
+            AssetKind.Image => "从左侧选择一张图像",
+            AssetKind.Sound => "从左侧选择一个声音",
+            AssetKind.Model => "从左侧选择一个 PMF 模型",
+            AssetKind.Font => "从左侧选择一个字体文件",
+            _ => "从左侧选择一个资源文件"
+        };
         SelectedMetadataText.Text = string.Empty;
     }
 
@@ -873,7 +917,9 @@ public sealed partial class MainWindow : Window
             ? "可多选图像后批量导出"
             : _currentKind == AssetKind.Sound
                 ? "可多选声音后批量导出"
-                : "可多选模型后批量导出";
+                : _currentKind == AssetKind.Model
+                    ? "可多选模型后批量导出"
+                    : "可多选资源后批量导出";
         SelectedMetadataText.Text = string.Empty;
         PreviewImage.Source = null;
         _selectedComposite = null;
