@@ -1,0 +1,76 @@
+name: Publish version 1.0
+
+on:
+  push:
+    branches:
+      - codex/v1-release
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore .\XunxianDpkViewer.csproj
+
+      - name: Build
+        run: dotnet build .\XunxianDpkViewer.csproj -c Release -p:Platform=x64 --no-restore
+
+      - name: Publish single-file application
+        run: dotnet publish .\XunxianDpkViewer.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o .\publish --no-restore
+
+      - name: Create version 1.0 release, verify it, then remove old releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $asset = Join-Path $PWD "publish\XunxianDpkViewer.exe"
+          if (-not (Test-Path $asset)) { throw "Published EXE was not created." }
+          $hash = (Get-FileHash $asset -Algorithm SHA256).Hash
+          $notes = @"
+          # 瀵讳粰 DPK 璧勬簮娴忚鍣?1.0
+
+          - 鑷姩璇诲彇鍏ㄩ儴 DPK锛屽苟鎸夌湡瀹炵洰褰曟祻瑙堝浘鍍忋€佸０闊炽€佹ā鍨嬨€佸瓧浣撳強閰嶇疆璧勬簮
+          - 鏀寔 PMF銆丆CT銆丆MF銆丏DS 璐村浘閾俱€佺粍鍚堟ā鍨嬩笌 OBJ 瀵煎嚭
+          - 榛樿寮€鍚柊鎵嬭鏄庯紝鍙洿瑙備簡瑙ｅ父瑙侀厤缃拰鍦板浘鏁版嵁鐢ㄩ€?          - 椤堕儴鏂板璁剧疆锛屽彲鏌ョ湅鍜屾洿鎹㈠鎴风璧勬簮璺緞
+          - 鏂板鍏充簬椤甸潰
+          - 浣滆€咃細榛戦宀?姊靛績浼肩伀
+
+          SHA-256锛?hash
+          "@
+          Set-Content -LiteralPath .\release-notes.md -Value $notes -Encoding utf8
+
+          gh release view v1.0 --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete v1.0 --repo "${{ github.repository }}" --cleanup-tag --yes
+          }
+
+          gh release create v1.0 "$asset#XunxianDpkViewer.exe" `
+            --repo "${{ github.repository }}" `
+            --target "${{ github.sha }}" `
+            --title "瀵讳粰 DPK 璧勬簮娴忚鍣?1.0" `
+            --notes-file .\release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw "Failed to create v1.0 release." }
+
+          $release = gh release view v1.0 --repo "${{ github.repository }}" --json assets,url | ConvertFrom-Json
+          if ($release.assets.Count -ne 1 -or $release.assets[0].name -ne "XunxianDpkViewer.exe") {
+            throw "v1.0 release asset verification failed. Old releases were kept."
+          }
+          Write-Host "Verified v1.0: $($release.url)"
+
+          foreach ($oldTag in @("v0.1.0", "v0.2.0", "v0.3.0", "v0.4.0")) {
+            gh release delete $oldTag --repo "${{ github.repository }}" --cleanup-tag --yes
+            if ($LASTEXITCODE -ne 0) { Write-Warning "Could not delete $oldTag; continuing." }
+          }
+
