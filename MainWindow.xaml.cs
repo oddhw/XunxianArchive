@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Text;
+using System.Xml.Linq;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -36,6 +38,9 @@ public sealed partial class MainWindow : Window
     private bool _multiSelectMode;
     private bool _settingModelTextureSelection;
     private FolderNodeInfo? _selectedFolder;
+
+    private bool UseBeginnerNames => BeginnerModeToggle?.IsOn == true &&
+        _currentKind is AssetKind.Font or AssetKind.Other;
 
     public MainWindow()
     {
@@ -190,9 +195,12 @@ public sealed partial class MainWindow : Window
                      .ThenBy(group => System.IO.Path.GetFileName(group.Key), StringComparer.OrdinalIgnoreCase))
         {
             string archiveName = System.IO.Path.GetFileName(archive.Key);
+            string archiveDisplayName = UseBeginnerNames
+                ? ResourceExplanationService.GetArchiveDisplayName(archiveName)
+                : archiveName;
             var root = new TreeViewNode
             {
-                Content = new FolderNodeInfo(archiveName, archive.Key, string.Empty),
+                Content = new FolderNodeInfo(archiveDisplayName, archive.Key, string.Empty),
                 IsExpanded = true
             };
             FolderTree.RootNodes.Add(root);
@@ -221,11 +229,14 @@ public sealed partial class MainWindow : Window
                 int slash = directory.LastIndexOf('/');
                 string parentPath = slash < 0 ? string.Empty : directory[..slash];
                 string folderName = slash < 0 ? directory : directory[(slash + 1)..];
+                string folderDisplayName = UseBeginnerNames
+                    ? ResourceExplanationService.GetFolderDisplayName(folderName)
+                    : folderName;
                 if (!nodesByPath.TryGetValue(parentPath, out TreeViewNode? parent)) continue;
 
                 var node = new TreeViewNode
                 {
-                    Content = new FolderNodeInfo(folderName, archive.Key, directory)
+                    Content = new FolderNodeInfo(folderDisplayName, archive.Key, directory)
                 };
                 parent.Children.Add(node);
                 nodesByPath[directory] = node;
@@ -294,7 +305,9 @@ public sealed partial class MainWindow : Window
             .Where(IsAssetInSelectedFolder)
             .Where(asset => terms.Length == 0 || terms.All(term =>
                 asset.Entry.Path.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                asset.ArchiveName.Contains(term, StringComparison.OrdinalIgnoreCase)));
+                asset.ArchiveName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                (UseBeginnerNames && ResourceExplanationService.GetSearchText(asset)
+                    .Contains(term, StringComparison.OrdinalIgnoreCase))));
         query = _sortMode switch
         {
             1 => query.OrderByDescending(asset => asset.Name, NaturalStringComparer.Instance),
@@ -321,7 +334,7 @@ public sealed partial class MainWindow : Window
             items.AddRange(composites.Select(composite => new AssetItemViewModel(composite)));
             compositeCount = composites.Count;
         }
-        items.AddRange(_filteredAssets.Select(asset => new AssetItemViewModel(asset)));
+        items.AddRange(_filteredAssets.Select(CreateAssetItem));
         _items = items;
         ImageGrid.ItemsSource = _items;
         AssetList.ItemsSource = _items;
@@ -330,6 +343,14 @@ public sealed partial class MainWindow : Window
         string compositeStatus = compositeCount > 0 ? $"，其中 {compositeCount:N0} 个完整组合模型" : string.Empty;
         SetStatus($"{scope}找到 {_items.Count:N0} 个资源{compositeStatus}，已全部显示");
         UpdateSelectionUi(0);
+    }
+
+    private AssetItemViewModel CreateAssetItem(AssetEntry asset)
+    {
+        if (!UseBeginnerNames) return new AssetItemViewModel(asset);
+        ResourceExplanation explanation = ResourceExplanationService.Explain(asset);
+        return new AssetItemViewModel(asset, explanation.FriendlyName,
+            $"原始文件：{asset.Name} · {explanation.Purpose}");
     }
 
     private void ImageGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -388,7 +409,7 @@ public sealed partial class MainWindow : Window
 
         _selectedComposite = null;
         _selectedAsset = asset;
-        SelectedNameText.Text = selectedCount > 1 ? $"{asset.Name}（已选择 {selectedCount:N0} 项）" : asset.Name;
+        SelectedNameText.Text = selectedCount > 1 ? $"{item.Name}（已选择 {selectedCount:N0} 项）" : item.Name;
         SelectedPathText.Text = asset.DisplayPath;
         SelectedMetadataText.Text = "正在读取…";
 
@@ -423,12 +444,20 @@ public sealed partial class MainWindow : Window
             }
             else
             {
-                GenericPreviewNameText.Text = asset.Name;
+                ResourceExplanation explanation = ResourceExplanationService.Explain(asset);
+                GenericPreviewNameText.Text = UseBeginnerNames ? explanation.FriendlyName : asset.Name;
+                GenericPreviewRawNameText.Text = $"原始文件：{asset.Name}\n包内路径：{asset.DisplayPath}";
                 GenericPreviewIcon.Glyph = asset.Kind == AssetKind.Font ? "\uE8D2" : "\uE8A5";
-                GenericPreviewHintText.Text = asset.Kind == AssetKind.Font
-                    ? "TrueType/OpenType 字体资源，可导出后安装或检查字形"
-                    : "配置、场景、特效或影片资源，可查看属性并导出原始文件";
-                SelectedMetadataText.Text = $"{asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
+                GenericPreviewPurposeText.Text = explanation.Purpose;
+                GenericPreviewUsageText.Text = explanation.UsedWhen;
+                GenericPreviewConfidenceText.Text = $"识别程度：{explanation.Confidence}";
+                GenericPreviewTechnicalText.Text = $"技术信息：{ResourceExplanationService.GetTechnicalSummary(asset, data.Length)}";
+                GenericPreviewHintText.Text = explanation.PreviewAdvice;
+                string? textPreview = TryCreateTextPreview(asset, data);
+                GenericTextPreviewBox.Text = textPreview ?? string.Empty;
+                GenericTextExpander.Visibility = textPreview is null ? Visibility.Collapsed : Visibility.Visible;
+                GenericTextExpander.IsExpanded = false;
+                SelectedMetadataText.Text = $"{explanation.FriendlyName} · {ResourceExplanationService.GetTechnicalSummary(asset, data.Length)}";
             }
         }
         catch (Exception ex)
@@ -805,6 +834,7 @@ public sealed partial class MainWindow : Window
         SoundPreviewPanel.Visibility = sounds ? Visibility.Visible : Visibility.Collapsed;
         ModelPreviewHost.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         GenericPreviewPanel.Visibility = fonts || others ? Visibility.Visible : Visibility.Collapsed;
+        BeginnerModeToggle.Visibility = fonts || others ? Visibility.Visible : Visibility.Collapsed;
         ModelTextureSelector.Visibility = Visibility.Collapsed;
         ModelTextureComboBox.ItemsSource = null;
         ExportModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
@@ -837,6 +867,15 @@ public sealed partial class MainWindow : Window
             _ => "从左侧选择一个资源文件"
         };
         SelectedMetadataText.Text = string.Empty;
+        GenericTextExpander.Visibility = Visibility.Collapsed;
+        GenericTextPreviewBox.Text = string.Empty;
+    }
+
+    private void BeginnerModeToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (FolderTree is null || SearchBox is null || _workspace.Assets.Count == 0) return;
+        BuildFolderTree();
+        ApplyFilter();
     }
 
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
@@ -924,6 +963,42 @@ public sealed partial class MainWindow : Window
         PreviewImage.Source = null;
         _selectedComposite = null;
         if (_currentKind == AssetKind.Model) _modelPreview.SetMesh(null);
+    }
+
+    private static string? TryCreateTextPreview(AssetEntry asset, byte[] data)
+    {
+        if (!ResourceExplanationService.IsTextPreviewSupported(asset) || data.Length == 0) return null;
+        const int maximumPreviewBytes = 2 * 1024 * 1024;
+        if (data.Length > maximumPreviewBytes)
+            return $"文件共有 {FormatBytes(data.Length)}，为避免界面卡顿，请导出后使用文本编辑器查看。";
+
+        string text;
+        using (var stream = new MemoryStream(data, writable: false))
+        using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            text = reader.ReadToEnd().Trim('\0', '\uFEFF', ' ', '\r', '\n');
+
+        if (text.Length == 0) return null;
+        int controlCharacters = text.Count(character =>
+            char.IsControl(character) && character is not '\r' and not '\n' and not '\t');
+        if (controlCharacters > Math.Max(4, text.Length / 100)) return null;
+        if (asset.Extension.Equals(".xml", StringComparison.OrdinalIgnoreCase) ||
+            asset.Extension.Equals(".cct", StringComparison.OrdinalIgnoreCase) ||
+            asset.Extension.Equals(".cmf", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                text = XDocument.Parse(text).ToString();
+            }
+            catch
+            {
+                // Keep the decoded original when an old client file is only XML-like.
+            }
+        }
+
+        const int maximumCharacters = 200_000;
+        return text.Length <= maximumCharacters
+            ? text
+            : text[..maximumCharacters] + "\n\n……内容过长，预览到此为止；导出原始文件可查看完整内容。";
     }
 
     private void SetBusy(bool busy, string? status = null)

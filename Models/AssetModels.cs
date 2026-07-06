@@ -43,23 +43,26 @@ public sealed class AssetItemViewModel : INotifyPropertyChanged
 {
     private ImageSource? _thumbnail;
     private string _subtitle;
+    private readonly string _name;
 
-    public AssetItemViewModel(AssetEntry asset)
+    public AssetItemViewModel(AssetEntry asset, string? displayName = null, string? subtitle = null)
     {
         Asset = asset;
-        _subtitle = asset.Entry.Path;
+        _name = displayName ?? asset.Name;
+        _subtitle = subtitle ?? asset.Entry.Path;
     }
 
     public AssetItemViewModel(CompositeModelEntry composite)
     {
         Composite = composite;
+        _name = composite.Name;
         _subtitle = $"完整组合 · {composite.Parts.Count:N0} 个 PMF 部件";
     }
 
     public AssetEntry? Asset { get; }
     public CompositeModelEntry? Composite { get; }
     public bool IsThumbnailLoading { get; set; }
-    public string Name => Asset?.Name ?? Composite?.Name ?? string.Empty;
+    public string Name => _name;
     public string Path => Asset?.Entry.Path ?? Composite?.ConfigAsset.Entry.Path ?? string.Empty;
     public string ArchiveName => Asset?.ArchiveName ?? Composite?.ConfigAsset.ArchiveName ?? string.Empty;
     public string Glyph => Composite is not null ? "\uE902" : Asset?.Kind switch

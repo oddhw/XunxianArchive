@@ -112,7 +112,15 @@ public static class SelfTest
         int fonts = workspace.Assets.Count(asset => asset.Kind == AssetKind.Font);
         if (fonts != 3)
             throw new InvalidDataException($"font.dpk 应包含 3 个字体，实际识别到 {fonts} 个。");
+        AssetEntry grass = workspace.Assets.First(asset =>
+            asset.ArchiveName.Equals("scn.dpk", StringComparison.OrdinalIgnoreCase) &&
+            asset.Name.Equals("grass.byte", StringComparison.OrdinalIgnoreCase));
+        ResourceExplanation grassExplanation = ResourceExplanationService.Explain(grass);
+        if (grassExplanation.FriendlyName != "草地分布数据" ||
+            ResourceExplanationService.GetFolderDisplayName("(3,2)") != "地图分块 X=3，Y=2")
+            throw new InvalidDataException("新手说明映射自检失败。");
         report.AppendLine($"完整客户端索引: {loaded.Length:N0} 个 DPK；{workspace.Assets.Count:N0} 个资源；{fonts:N0} 个 TTF 字体");
+        report.AppendLine($"新手说明: grass.byte → {grassExplanation.FriendlyName}；(3,2) → 地图分块 X=3，Y=2");
     }
 
     private static string DescribeMesh(Models.PmfMesh mesh) =>
