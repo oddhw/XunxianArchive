@@ -1,3 +1,4 @@
+
 name: Publish version 1.0
 
 on:
@@ -39,15 +40,16 @@ jobs:
           if (-not (Test-Path $asset)) { throw "Published EXE was not created." }
           $hash = (Get-FileHash $asset -Algorithm SHA256).Hash
           $notes = @"
-          # 瀵讳粰 DPK 璧勬簮娴忚鍣?1.0
+          # 寻仙 DPK 资源浏览器 1.0
 
-          - 鑷姩璇诲彇鍏ㄩ儴 DPK锛屽苟鎸夌湡瀹炵洰褰曟祻瑙堝浘鍍忋€佸０闊炽€佹ā鍨嬨€佸瓧浣撳強閰嶇疆璧勬簮
-          - 鏀寔 PMF銆丆CT銆丆MF銆丏DS 璐村浘閾俱€佺粍鍚堟ā鍨嬩笌 OBJ 瀵煎嚭
-          - 榛樿寮€鍚柊鎵嬭鏄庯紝鍙洿瑙備簡瑙ｅ父瑙侀厤缃拰鍦板浘鏁版嵁鐢ㄩ€?          - 椤堕儴鏂板璁剧疆锛屽彲鏌ョ湅鍜屾洿鎹㈠鎴风璧勬簮璺緞
-          - 鏂板鍏充簬椤甸潰
-          - 浣滆€咃細榛戦宀?姊靛績浼肩伀
+          - 自动读取全部 DPK，并按真实目录浏览图像、声音、模型、字体及配置资源
+          - 支持 PMF、CCT、CMF、DDS 贴图链、组合模型与 OBJ 导出
+          - 默认开启新手说明，可直观了解常见配置和地图数据用途
+          - 顶部新增设置，可查看和更换客户端资源路径
+          - 新增关于页面
+          - 作者：黑风岭-梵心似火
 
-          SHA-256锛?hash
+          SHA-256：$hash
           "@
           Set-Content -LiteralPath .\release-notes.md -Value $notes -Encoding utf8
 
@@ -59,7 +61,7 @@ jobs:
           gh release create v1.0 "$asset#XunxianDpkViewer.exe" `
             --repo "${{ github.repository }}" `
             --target "${{ github.sha }}" `
-            --title "瀵讳粰 DPK 璧勬簮娴忚鍣?1.0" `
+            --title "寻仙 DPK 资源浏览器 1.0" `
             --notes-file .\release-notes.md
           if ($LASTEXITCODE -ne 0) { throw "Failed to create v1.0 release." }
 
