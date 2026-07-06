@@ -6,4 +6,3 @@ if errorlevel 1 exit /b %errorlevel%
 
 copy /Y "%~dp0bin\single-file\XunxianDpkViewer.exe" "%~dp0XunxianDpkViewer.exe" >nul
 echo Created: %~dp0XunxianDpkViewer.exe
-
