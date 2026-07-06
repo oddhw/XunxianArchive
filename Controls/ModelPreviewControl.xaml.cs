@@ -255,7 +255,10 @@ public sealed partial class ModelPreviewControl : UserControl
 
                 int pixelIndex = y * width + x;
                 float depth = wa * za + wb * zb + wc * zc;
-                if (depth <= depthBuffer[pixelIndex]) continue;
+                // Character faces, eyes and decorations are often later material passes on
+                // exactly the same mesh. Let equal-depth pixels through so their alpha layer
+                // can be composited over the base skin instead of disappearing behind it.
+                if (depth < depthBuffer[pixelIndex] - 0.000001f) continue;
 
                 byte blue;
                 byte green;

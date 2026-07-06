@@ -14,6 +14,17 @@ public sealed class DpkWorkspace : IDisposable
         ".wav", ".ogg"
     };
 
+    private static readonly HashSet<string> FontExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".ttf", ".otf", ".ttc"
+    };
+
+    private static readonly string[] PreferredArchiveOrder =
+    {
+        "gui.dpk", "font.dpk", "sound.dpk", "music.dpk", "obj.dpk", "cha.dpk",
+        "gfx.dpk", "scn.dpk", "terr.dpk", "water.dpk", "sky.dpk", "movie.dpk", "system.dpk"
+    };
+
     private readonly Dictionary<string, DpkReader> _readers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<AssetEntry> _assets = new();
     private ModelTextureResolver? _modelTextureResolver;
@@ -31,17 +42,13 @@ public sealed class DpkWorkspace : IDisposable
 
     public void OpenClientResourceFolder(string folder)
     {
-        string[] preferredArchives =
-        {
-            "gui.dpk", "sound.dpk", "music.dpk", "obj.dpk", "cha.dpk"
-        };
-
-        var archives = preferredArchives
-            .Select(name => System.IO.Path.Combine(folder, name))
-            .Where(File.Exists)
+        var archiveOrder = PreferredArchiveOrder
+            .Select((name, index) => (name, index))
+            .ToDictionary(item => item.name, item => item.index, StringComparer.OrdinalIgnoreCase);
+        string[] archives = Directory.GetFiles(folder, "*.dpk", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => archiveOrder.TryGetValue(System.IO.Path.GetFileName(path), out int index) ? index : int.MaxValue)
+            .ThenBy(path => System.IO.Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        if (archives.Length == 0)
-            archives = Directory.GetFiles(folder, "*.dpk", SearchOption.TopDirectoryOnly);
         if (archives.Length == 0)
             throw new DirectoryNotFoundException("所选目录中没有 DPK 文件。");
 
@@ -99,6 +106,7 @@ public sealed class DpkWorkspace : IDisposable
         if (ImageExtensions.Contains(extension)) return AssetKind.Image;
         if (SoundExtensions.Contains(extension)) return AssetKind.Sound;
         if (extension.Equals(".pmf", StringComparison.OrdinalIgnoreCase)) return AssetKind.Model;
+        if (FontExtensions.Contains(extension)) return AssetKind.Font;
         return AssetKind.Other;
     }
 

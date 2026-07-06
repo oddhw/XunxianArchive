@@ -9,6 +9,7 @@ public enum AssetKind
     Image,
     Sound,
     Model,
+    Font,
     Other
 }
 
@@ -65,6 +66,8 @@ public sealed class AssetItemViewModel : INotifyPropertyChanged
     {
         AssetKind.Sound => "\uE8D6",
         AssetKind.Model => "\uE809",
+        AssetKind.Font => "\uE8D2",
+        AssetKind.Other => "\uE8A5",
         _ => "\uEB9F"
     };
 
