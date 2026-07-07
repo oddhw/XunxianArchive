@@ -6,10 +6,19 @@ namespace XunxianDpkViewer.Core;
 
 public sealed class ModelTextureResolver
 {
+    private const int MaximumCompositeParts = 64;
+
     private readonly DpkWorkspace _workspace;
     private readonly Dictionary<string, IReadOnlyList<ModelTextureBinding>> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<CompositeModelEntry>> _compositeCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
+    private Dictionary<string, AssetEntry>? _assetByReference;
+
+    private sealed record CompositePartCandidate(
+        AssetEntry MeshAsset,
+        string MaterialName,
+        XElement SourceElement,
+        bool UsesMaterialReferences);
 
     public ModelTextureResolver(DpkWorkspace workspace)
     {
@@ -64,7 +73,7 @@ public sealed class ModelTextureResolver
                 continue;
             }
 
-            var parts = new List<CompositeModelPart>();
+            var candidates = new List<CompositePartCandidate>();
             XElement[] materialReferences = document.Descendants()
                 .Where(element => element.Name.LocalName.Equals("Material", StringComparison.OrdinalIgnoreCase) &&
                                   element.Value.Contains(".cmf", StringComparison.OrdinalIgnoreCase))
@@ -79,17 +88,7 @@ public sealed class ModelTextureResolver
                 if (mesh?.Kind != AssetKind.Model) continue;
                 string materialName = modelElement.Attributes()
                     .FirstOrDefault(attribute => attribute.Name.LocalName.Equals("MatName", StringComparison.OrdinalIgnoreCase))?.Value ?? string.Empty;
-                ModelTextureBinding? texture = null;
-                foreach (XElement materialReference in materialReferences)
-                {
-                    AssetEntry? cmf = FindReferencedAsset(materialReference.Value);
-                    if (cmf is null) continue;
-                    var candidates = new List<ModelTextureBinding>();
-                    AddCmfBindings(candidates, cmf, materialName, config.Entry.Path);
-                    texture = candidates.FirstOrDefault(binding => binding.MapType.StartsWith("BaseMap", StringComparison.OrdinalIgnoreCase));
-                    if (texture is not null) break;
-                }
-                parts.Add(new CompositeModelPart(mesh, materialName, texture));
+                candidates.Add(new CompositePartCandidate(mesh, materialName, modelElement, UsesMaterialReferences: true));
             }
 
             foreach (XElement meshElement in document.Descendants()
@@ -97,14 +96,21 @@ public sealed class ModelTextureResolver
             {
                 AssetEntry? mesh = FindReferencedAsset(meshElement.Value);
                 if (mesh?.Kind != AssetKind.Model || meshElement.Parent is null) continue;
-                var candidates = new List<ModelTextureBinding>();
-                AddTextureElements(candidates, meshElement.Parent.Elements(), string.Empty, config.Entry.Path);
-                parts.Add(new CompositeModelPart(mesh, string.Empty,
-                    candidates.FirstOrDefault(binding => binding.MapType.StartsWith("BaseMap", StringComparison.OrdinalIgnoreCase))));
+                candidates.Add(new CompositePartCandidate(mesh, string.Empty, meshElement.Parent, UsesMaterialReferences: false));
             }
 
-            CompositeModelPart[] distinctParts = parts
-                .DistinctBy(part => $"{part.MeshAsset.DisplayPath}|{part.MaterialName}", StringComparer.OrdinalIgnoreCase)
+            CompositePartCandidate[] selectedCandidates = SelectCompositeCandidates(
+                candidates
+                    .DistinctBy(part => $"{part.MeshAsset.DisplayPath}|{part.MaterialName}", StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                config);
+            if (selectedCandidates.Length < 2) continue;
+
+            CompositeModelPart[] distinctParts = selectedCandidates
+                .Select(candidate => new CompositeModelPart(
+                    candidate.MeshAsset,
+                    candidate.MaterialName,
+                    ResolveCompositeTexture(candidate, materialReferences, config.Entry.Path)))
                 .ToArray();
             if (distinctParts.Length < 2) continue;
             string name = System.IO.Path.GetFileNameWithoutExtension(config.Name) + "（完整组合）";
@@ -117,9 +123,7 @@ public sealed class ModelTextureResolver
     {
         string modelReference = NormalizeReference($"{System.IO.Path.GetFileNameWithoutExtension(model.ArchiveName)}/{model.Entry.Path}");
         var bindings = new List<ModelTextureBinding>();
-        foreach (AssetEntry config in _workspace.Assets.Where(asset =>
-                     string.Equals(asset.ArchivePath, model.ArchivePath, StringComparison.OrdinalIgnoreCase) &&
-                     asset.Extension.Equals(".cct", StringComparison.OrdinalIgnoreCase)))
+        foreach (AssetEntry config in GetTextureCandidateConfigs(model))
         {
             string text;
             try
@@ -130,7 +134,7 @@ public sealed class ModelTextureResolver
             {
                 continue;
             }
-            if (!text.Contains(model.Name, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!TextMayReferenceModel(text, model)) continue;
 
             XDocument document;
             try
@@ -171,11 +175,103 @@ public sealed class ModelTextureResolver
         }
 
         if (bindings.Count == 0) AddHeuristicBinding(bindings, model);
+        string? modelRoot = GetMeshRoot(model.Entry.Path);
         return bindings
             .DistinctBy(binding => $"{binding.TextureAsset.DisplayPath}|{binding.MapType}|{binding.MaterialName}", StringComparer.OrdinalIgnoreCase)
-            .OrderBy(binding => binding.MapType.StartsWith("BaseMap", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .OrderBy(binding => IsTextureUnderRoot(binding, modelRoot) ? 0 : 1)
+            .ThenBy(binding => binding.MapType.StartsWith("BaseMap", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(binding => binding.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private ModelTextureBinding? ResolveCompositeTexture(
+        CompositePartCandidate candidate,
+        IReadOnlyList<XElement> materialReferences,
+        string configPath)
+    {
+        var bindings = new List<ModelTextureBinding>();
+        if (candidate.UsesMaterialReferences)
+        {
+            foreach (XElement materialReference in materialReferences)
+            {
+                AssetEntry? cmf = FindReferencedAsset(materialReference.Value);
+                if (cmf is null) continue;
+                AddCmfBindings(bindings, cmf, candidate.MaterialName, configPath);
+                ModelTextureBinding? baseMap = SelectBaseMapBinding(bindings, GetMeshRoot(candidate.MeshAsset.Entry.Path));
+                if (baseMap is not null) return baseMap;
+            }
+        }
+        else
+        {
+            AddTextureElements(bindings, candidate.SourceElement.Elements(), candidate.MaterialName, configPath);
+        }
+
+        return SelectBaseMapBinding(bindings, GetMeshRoot(candidate.MeshAsset.Entry.Path));
+    }
+
+    private CompositePartCandidate[] SelectCompositeCandidates(
+        IReadOnlyList<CompositePartCandidate> candidates,
+        AssetEntry config)
+    {
+        string? root = GetConfigRoot(config.Entry.Path);
+        CompositePartCandidate[] selected = candidates.ToArray();
+
+        if (selected.Length > MaximumCompositeParts && root is not null)
+        {
+            CompositePartCandidate[] local = selected
+                .Where(candidate => IsUnderRoot(candidate.MeshAsset.Entry.Path, root))
+                .ToArray();
+            if (local.Length is >= 2 and <= MaximumCompositeParts) selected = local;
+            else return Array.Empty<CompositePartCandidate>();
+        }
+
+        return root is null ? selected : CollapseMaterialVariants(selected, config.ArchivePath, root);
+    }
+
+    private CompositePartCandidate[] CollapseMaterialVariants(
+        IReadOnlyList<CompositePartCandidate> candidates,
+        string archivePath,
+        string root)
+    {
+        HashSet<string> localMaterialNames = _workspace.Assets
+            .Where(asset => string.Equals(asset.ArchivePath, archivePath, StringComparison.OrdinalIgnoreCase) &&
+                            asset.Extension.Equals(".dds", StringComparison.OrdinalIgnoreCase) &&
+                            IsUnderRoot(asset.Entry.Path, root))
+            .Select(asset => System.IO.Path.GetFileNameWithoutExtension(asset.Name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (localMaterialNames.Count == 0) return candidates.ToArray();
+
+        return candidates
+            .GroupBy(candidate => candidate.MeshAsset.DisplayPath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.FirstOrDefault(candidate => localMaterialNames.Contains(candidate.MaterialName)) ?? group.First())
+            .ToArray();
+    }
+
+    private IReadOnlyList<AssetEntry> GetTextureCandidateConfigs(AssetEntry model)
+    {
+        AssetEntry[] configs = _workspace.Assets
+            .Where(asset => string.Equals(asset.ArchivePath, model.ArchivePath, StringComparison.OrdinalIgnoreCase) &&
+                            asset.Extension.Equals(".cct", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        string? root = GetMeshRoot(model.Entry.Path);
+        if (root is not null)
+        {
+            string configPrefix = root + "/config/";
+            AssetEntry[] localConfigs = configs
+                .Where(config => NormalizeAssetPath(config.Entry.Path).StartsWith(configPrefix, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (localConfigs.Length > 0) return localConfigs;
+        }
+
+        return configs;
+    }
+
+    private static bool TextMayReferenceModel(string text, AssetEntry model)
+    {
+        string path = NormalizeAssetPath(model.Entry.Path);
+        return text.Contains(path, StringComparison.OrdinalIgnoreCase) ||
+               text.Contains(path.Replace('/', '\\'), StringComparison.OrdinalIgnoreCase);
     }
 
     private void AddCmfBindings(List<ModelTextureBinding> bindings, AssetEntry cmf, string materialName, string configPath)
@@ -232,14 +328,15 @@ public sealed class ModelTextureResolver
     private AssetEntry? FindReferencedAsset(string reference)
     {
         string normalized = NormalizeReference(reference);
-        int slash = normalized.IndexOf('/');
-        if (slash <= 0) return null;
-        string archiveName = normalized[..slash] + ".dpk";
-        string internalPath = normalized[(slash + 1)..];
-        return _workspace.Assets.FirstOrDefault(asset =>
-            asset.ArchiveName.Equals(archiveName, StringComparison.OrdinalIgnoreCase) &&
-            asset.Entry.Path.Replace('\\', '/').Equals(internalPath, StringComparison.OrdinalIgnoreCase));
+        return AssetByReference.TryGetValue(normalized, out AssetEntry? asset) ? asset : null;
     }
+
+    private Dictionary<string, AssetEntry> AssetByReference =>
+        _assetByReference ??= _workspace.Assets
+            .GroupBy(asset => NormalizeAssetPath(
+                $"{System.IO.Path.GetFileNameWithoutExtension(asset.ArchiveName)}/{asset.Entry.Path}"),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
     private static bool ReferenceMatches(string reference, string normalizedTarget) =>
         NormalizeReference(reference).Equals(normalizedTarget, StringComparison.OrdinalIgnoreCase);
@@ -247,9 +344,44 @@ public sealed class ModelTextureResolver
     private static string NormalizeReference(string reference)
     {
         string normalized = reference.Trim().Replace('\\', '/');
-        if (normalized.StartsWith("$(res)/", StringComparison.OrdinalIgnoreCase)) normalized = normalized[7..];
+        if (normalized.StartsWith("$(res)", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[6..].TrimStart('/');
         return normalized.TrimStart('/');
     }
+
+    private static string NormalizeAssetPath(string path) => path.Replace('\\', '/').Trim('/');
+
+    private static string? GetConfigRoot(string configPath)
+    {
+        string normalized = NormalizeAssetPath(configPath);
+        int marker = normalized.IndexOf("/config/", StringComparison.OrdinalIgnoreCase);
+        return marker > 0 ? normalized[..marker] : null;
+    }
+
+    private static string? GetMeshRoot(string meshPath)
+    {
+        string normalized = NormalizeAssetPath(meshPath);
+        int marker = normalized.IndexOf("/mesh/", StringComparison.OrdinalIgnoreCase);
+        return marker > 0 ? normalized[..marker] : null;
+    }
+
+    private static bool IsUnderRoot(string assetPath, string root)
+    {
+        string normalized = NormalizeAssetPath(assetPath);
+        return normalized.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTextureUnderRoot(ModelTextureBinding binding, string? root) =>
+        root is not null && IsUnderRoot(binding.TextureAsset.Entry.Path, root);
+
+    private static ModelTextureBinding? SelectBaseMapBinding(
+        IReadOnlyList<ModelTextureBinding> bindings,
+        string? root) =>
+        bindings
+            .Where(binding => binding.MapType.StartsWith("BaseMap", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(binding => IsTextureUnderRoot(binding, root) ? 0 : 1)
+            .ThenBy(binding => binding.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
 
     private static string DecodeXml(byte[] data)
     {

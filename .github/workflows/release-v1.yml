@@ -1,9 +1,9 @@
-name: Publish version 1.0
+name: Publish latest release
 
 on:
   push:
     branches:
-      - codex/v1-release
+      - main
   workflow_dispatch:
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Publish single-file application
         run: dotnet publish .\XunxianDpkViewer.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o .\publish --no-restore
 
-      - name: Create version 1.0 release, verify it, then remove old releases
+      - name: Create version 1.1 release, verify it, then remove old releases
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,38 +39,37 @@ jobs:
           if (-not (Test-Path $asset)) { throw "Published EXE was not created." }
           $hash = (Get-FileHash $asset -Algorithm SHA256).Hash
           $notes = @"
-          # 寻仙 DPK 资源浏览器 1.0
+          # 寻仙 DPK 资源浏览器 1.1
 
-          - 自动读取全部 DPK，并按真实目录浏览图像、声音、模型、字体及配置资源
-          - 支持 PMF、CCT、CMF、DDS 贴图链、组合模型与 OBJ 导出
-          - 默认开启新手说明，可直观了解常见配置和地图数据用途
-          - 顶部新增设置，可查看和更换客户端资源路径
-          - 新增关于页面
+          - 修复 zj_tuzinv_042、zj_waiguonan_025 等角色组合模型误组合、预览失败和加载卡顿问题
+          - 修复小尺度 PMF 模型被错误判定为退化三角面，导致实体和贴图模式只显示碎片的问题
+          - 组合模型加载时显示加载进度，并跳过异常部件而不是让整组预览失败
+          - 优先使用模型自身目录的贴图材质，改善 tuzinv 模型贴图匹配
           - 作者：黑风岭-梵心似火
 
           SHA-256：$hash
           "@
           Set-Content -LiteralPath .\release-notes.md -Value $notes -Encoding utf8
 
-          gh release view v1.0 --repo "${{ github.repository }}" *> $null
+          gh release view v1.1 --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release delete v1.0 --repo "${{ github.repository }}" --cleanup-tag --yes
+            gh release delete v1.1 --repo "${{ github.repository }}" --cleanup-tag --yes
           }
 
-          gh release create v1.0 "$asset#XunxianDpkViewer.exe" `
+          gh release create v1.1 "$asset#XunxianDpkViewer.exe" `
             --repo "${{ github.repository }}" `
             --target "${{ github.sha }}" `
-            --title "寻仙 DPK 资源浏览器 1.0" `
+            --title "寻仙 DPK 资源浏览器 1.1" `
             --notes-file .\release-notes.md
-          if ($LASTEXITCODE -ne 0) { throw "Failed to create v1.0 release." }
+          if ($LASTEXITCODE -ne 0) { throw "Failed to create v1.1 release." }
 
-          $release = gh release view v1.0 --repo "${{ github.repository }}" --json assets,url | ConvertFrom-Json
+          $release = gh release view v1.1 --repo "${{ github.repository }}" --json assets,url | ConvertFrom-Json
           if ($release.assets.Count -ne 1 -or $release.assets[0].name -ne "XunxianDpkViewer.exe") {
-            throw "v1.0 release asset verification failed. Old releases were kept."
+            throw "v1.1 release asset verification failed. Old releases were kept."
           }
-          Write-Host "Verified v1.0: $($release.url)"
+          Write-Host "Verified v1.1: $($release.url)"
 
-          foreach ($oldTag in @("v0.1.0", "v0.2.0", "v0.3.0", "v0.4.0")) {
+          foreach ($oldTag in @("v1.0", "v0.1.0", "v0.2.0", "v0.3.0", "v0.4.0")) {
             gh release delete $oldTag --repo "${{ github.repository }}" --cleanup-tag --yes
             if ($LASTEXITCODE -ne 0) { Write-Warning "Could not delete $oldTag; continuing." }
           }

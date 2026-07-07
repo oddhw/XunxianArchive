@@ -20,7 +20,7 @@ namespace XunxianDpkViewer;
 
 public sealed partial class MainWindow : Window
 {
-    private const string AppVersion = "1.0";
+    private const string AppVersion = "1.1";
     private const string AppAuthor = "黑风岭-梵心似火";
     private readonly DpkWorkspace _workspace = new();
     private List<AssetItemViewModel> _items = new();
@@ -40,6 +40,7 @@ public sealed partial class MainWindow : Window
     private bool _multiSelectMode;
     private bool _settingModelTextureSelection;
     private FolderNodeInfo? _selectedFolder;
+    private int _previewGeneration;
 
     private bool UseBeginnerNames => BeginnerModeToggle?.IsOn == true &&
         _currentKind is AssetKind.Font or AssetKind.Other;
@@ -391,11 +392,15 @@ public sealed partial class MainWindow : Window
                                    list.SelectedItems.OfType<AssetItemViewModel>().LastOrDefault();
         if (item is null)
         {
+            _previewGeneration++;
+            PreviewLoadingOverlay.Visibility = Visibility.Collapsed;
             _selectedAsset = null;
             ResetPreviewSelection();
             return;
         }
 
+        int previewGeneration = ++_previewGeneration;
+        PreviewLoadingOverlay.Visibility = Visibility.Collapsed;
         if (item.Composite is CompositeModelEntry composite)
         {
             _selectedAsset = null;
@@ -404,7 +409,15 @@ public sealed partial class MainWindow : Window
             SelectedPathText.Text = composite.DisplayPath;
             SelectedMetadataText.Text = $"正在组合 {composite.Parts.Count:N0} 个模型部件及贴图…";
             ModelTextureSelector.Visibility = Visibility.Collapsed;
-            await PreviewCompositeModelAsync(composite);
+            ShowPreviewLoading(previewGeneration, $"正在加载组合模型：{composite.Parts.Count:N0} 个部件");
+            try
+            {
+                await PreviewCompositeModelAsync(composite, previewGeneration);
+            }
+            finally
+            {
+                HidePreviewLoading(previewGeneration);
+            }
             return;
         }
         if (item.Asset is not AssetEntry asset) return;
@@ -414,11 +427,13 @@ public sealed partial class MainWindow : Window
         SelectedNameText.Text = selectedCount > 1 ? $"{item.Name}（已选择 {selectedCount:N0} 项）" : item.Name;
         SelectedPathText.Text = asset.DisplayPath;
         SelectedMetadataText.Text = "正在读取…";
+        if (asset.Kind == AssetKind.Model)
+            ShowPreviewLoading(previewGeneration, $"正在加载模型：{asset.Name}");
 
         try
         {
             byte[] data = await Task.Run(() => _workspace.Extract(asset));
-            if (_selectedAsset != asset) return;
+            if (_selectedAsset != asset || !IsPreviewCurrent(previewGeneration)) return;
 
             if (asset.Kind == AssetKind.Image)
             {
@@ -434,7 +449,7 @@ public sealed partial class MainWindow : Window
             {
                 (PmfMesh mesh, IReadOnlyList<ModelTextureBinding> textures) = await Task.Run(() =>
                     (PmfParser.Parse(data), _workspace.ResolveModelTextures(asset)));
-                if (_selectedAsset != asset) return;
+                if (_selectedAsset != asset || !IsPreviewCurrent(previewGeneration)) return;
                 _modelPreview.SetMesh(mesh);
                 ModelTextureSelector.Visibility = Visibility.Visible;
                 _settingModelTextureSelection = true;
@@ -466,41 +481,68 @@ public sealed partial class MainWindow : Window
         {
             SelectedMetadataText.Text = $"预览失败：{ex.Message}";
         }
+        finally
+        {
+            if (asset.Kind == AssetKind.Model)
+                HidePreviewLoading(previewGeneration);
+        }
     }
 
-    private async Task PreviewCompositeModelAsync(CompositeModelEntry composite)
+    private async Task PreviewCompositeModelAsync(CompositeModelEntry composite, int previewGeneration)
     {
         try
         {
-            ModelRenderPart[] renderParts = await Task.Run(() => composite.Parts.Select(part =>
+            (ModelRenderPart[] renderParts, int skippedParts) = await Task.Run(() =>
             {
-                PmfMesh mesh = PmfParser.Parse(_workspace.Extract(part.MeshAsset));
-                DecodedTexture? texture = null;
-                string textureName = string.Empty;
-                if (part.TextureBinding is ModelTextureBinding binding)
+                var parts = new List<ModelRenderPart>();
+                int skipped = 0;
+                foreach (CompositeModelPart part in composite.Parts)
                 {
                     try
                     {
-                        texture = DdsDecoder.Decode(_workspace.Extract(binding.TextureAsset));
-                        textureName = binding.DisplayName;
+                        PmfMesh mesh = PmfParser.Parse(_workspace.Extract(part.MeshAsset));
+                        DecodedTexture? texture = null;
+                        string textureName = string.Empty;
+                        if (part.TextureBinding is ModelTextureBinding binding)
+                        {
+                            try
+                            {
+                                texture = DdsDecoder.Decode(_workspace.Extract(binding.TextureAsset));
+                                textureName = binding.DisplayName;
+                            }
+                            catch
+                            {
+                                // 单个部件贴图不支持时，仍保留其实体着色几何。
+                            }
+                        }
+
+                        parts.Add(new ModelRenderPart(part.MeshAsset.Name, mesh, texture, textureName));
                     }
                     catch
                     {
-                        // 单个部件贴图不支持时，仍保留其实体着色几何。
+                        skipped++;
                     }
                 }
-                return new ModelRenderPart(part.MeshAsset.Name, mesh, texture, textureName);
-            }).ToArray());
-            if (_selectedComposite != composite) return;
+
+                return (parts.ToArray(), skipped);
+            });
+            if (_selectedComposite != composite || !IsPreviewCurrent(previewGeneration)) return;
+            if (renderParts.Length == 0)
+            {
+                SelectedMetadataText.Text = "组合模型预览失败：没有可用的 PMF 部件";
+                return;
+            }
+
             _modelPreview.SetComposite(renderParts, composite.Name);
             int vertices = renderParts.Sum(part => part.Mesh.Vertices.Count);
             long triangles = renderParts.Sum(part => (long)part.Mesh.DeclaredTriangleCount);
             int texturedParts = renderParts.Count(part => part.Texture is not null);
-            SelectedMetadataText.Text = $"完整组合 · {renderParts.Length:N0} 个 PMF 部件 · {vertices:N0} 顶点 · {triangles:N0} 三角面 · {texturedParts:N0} 个部件已加载贴图";
+            string skippedStatus = skippedParts > 0 ? $" · 跳过 {skippedParts:N0} 个异常部件" : string.Empty;
+            SelectedMetadataText.Text = $"完整组合 · {renderParts.Length:N0} 个 PMF 部件 · {vertices:N0} 顶点 · {triangles:N0} 三角面 · {texturedParts:N0} 个部件已加载贴图{skippedStatus}";
         }
         catch (Exception ex)
         {
-            if (_selectedComposite != composite) return;
+            if (_selectedComposite != composite || !IsPreviewCurrent(previewGeneration)) return;
             SelectedMetadataText.Text = $"组合模型预览失败：{ex.Message}";
         }
     }
@@ -1028,6 +1070,7 @@ public sealed partial class MainWindow : Window
 
     private void ResetPreviewSelection()
     {
+        PreviewLoadingOverlay.Visibility = Visibility.Collapsed;
         ExportModelButton.IsEnabled = false;
         PropertiesButton.IsEnabled = false;
         SelectedNameText.Text = "尚未选择资源";
@@ -1042,6 +1085,21 @@ public sealed partial class MainWindow : Window
         PreviewImage.Source = null;
         _selectedComposite = null;
         if (_currentKind == AssetKind.Model) _modelPreview.SetMesh(null);
+    }
+
+    private bool IsPreviewCurrent(int generation) => _previewGeneration == generation;
+
+    private void ShowPreviewLoading(int generation, string text)
+    {
+        if (!IsPreviewCurrent(generation)) return;
+        PreviewLoadingText.Text = text;
+        PreviewLoadingOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void HidePreviewLoading(int generation)
+    {
+        if (IsPreviewCurrent(generation))
+            PreviewLoadingOverlay.Visibility = Visibility.Collapsed;
     }
 
     private static string? TryCreateTextPreview(AssetEntry asset, byte[] data)

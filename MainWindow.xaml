@@ -23,7 +23,7 @@
                 <TextBlock Text="寻仙 DPK 资源浏览器"
                            Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="14" />
                 <Border Padding="7,2" CornerRadius="8" Background="{StaticResource AccentSurfaceBrush}">
-                    <TextBlock Text="v1.0" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
+                    <TextBlock Text="v1.1" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
                 </Border>
             </StackPanel>
             <TextBlock Grid.Column="2" x:Name="ArchiveSummaryText" Margin="0,0,16,0"
@@ -349,6 +349,24 @@
                                             </ScrollViewer>
                                         </Border>
                                     </Grid>
+                                    <Border x:Name="PreviewLoadingOverlay"
+                                            Visibility="Collapsed"
+                                            Background="#C00A111C"
+                                            CornerRadius="14">
+                                        <StackPanel HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Width="320"
+                                                    Spacing="12">
+                                            <TextBlock x:Name="PreviewLoadingText"
+                                                       Text="正在加载模型..."
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center" />
+                                            <ProgressBar IsIndeterminate="True"
+                                                         Height="4" />
+                                        </StackPanel>
+                                    </Border>
                                 </Grid>
 
                                 <StackPanel Grid.Row="1" Margin="2,16,2,2" Spacing="8">

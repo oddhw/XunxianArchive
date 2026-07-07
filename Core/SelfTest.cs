@@ -50,8 +50,16 @@ public static class SelfTest
         CheckFile(report, root, "cha.dpk", ".pmf", data => DescribeMesh(PmfParser.Parse(data)));
         CheckModelTexture(report, root, "obj.dpk", "share/mesh/gx_jzjcxjgwkc_004_h.pmf");
         CheckModelTexture(report, root, "cha.dpk", "share/mesh/cw/mz635_mz_001.pmf");
+        CheckModelTexture(report, root, "cha.dpk", "special/zj_tuzinv_042/mesh/hd_001.pmf",
+            "special/zj_tuzinv_042/texture/zj_zjhd_042_h.dds");
+        CheckModelTexture(report, root, "cha.dpk", "special/zj_tuzinv_042/mesh/mz_001.pmf",
+            "special/zj_tuzinv_042/texture/zj_zjmz_042_h.dds");
+        CheckSmallScaleModel(report, root, "cha.dpk", "special/zj_tuzinv_042/mesh/hd_001.pmf");
+        CheckSmallScaleModel(report, root, "cha.dpk", "special/zj_tuzinv_042/mesh/mz_001.pmf");
         CheckCompositeModel(report, root, "cha.dpk", "special/gw_cwbiyiniaoludi_1313");
         CheckCompositeModel(report, root, "cha.dpk", "special/gw_hlnubing_187");
+        CheckCompositeModel(report, root, "cha.dpk", "special/zj_tuzinv_042", maximumParts: 64);
+        CheckCompositeModel(report, root, "cha.dpk", "special/zj_waiguonan_025", maximumParts: 64);
         CheckCompleteClientIndex(report, root);
         report.AppendLine("SELF-TEST PASSED");
         return report.ToString();
@@ -71,19 +79,32 @@ public static class SelfTest
         report.AppendLine($"{archiveName}: {entries.Count:N0} 项；{sample.Path}；{data.Length:N0} 字节；{validate(data)}");
     }
 
-    private static void CheckCompositeModel(StringBuilder report, string root, string archiveName, string folderPath)
+    private static void CheckCompositeModel(
+        StringBuilder report,
+        string root,
+        string archiveName,
+        string folderPath,
+        int maximumParts = int.MaxValue)
     {
         using var workspace = new DpkWorkspace();
         workspace.OpenSingleArchive(Path.Combine(root, archiveName));
         CompositeModelEntry composite = workspace.FindCompositeModels(
             workspace.ArchivePaths.Single(), folderPath).First();
+        if (composite.Parts.Count > maximumParts)
+            throw new InvalidDataException(
+                $"Composite {folderPath} has {composite.Parts.Count:N0} parts; expected at most {maximumParts:N0}.");
         int texturedParts = composite.Parts.Count(part => part.TextureBinding is not null);
         foreach (CompositeModelPart part in composite.Parts)
             _ = PmfParser.Parse(workspace.Extract(part.MeshAsset));
         report.AppendLine($"{archiveName} 组合模型: {composite.Name}；{composite.Parts.Count:N0} 个部件；{texturedParts:N0} 个贴图材质");
     }
 
-    private static void CheckModelTexture(StringBuilder report, string root, string archiveName, string modelPath)
+    private static void CheckModelTexture(
+        StringBuilder report,
+        string root,
+        string archiveName,
+        string modelPath,
+        string? expectedTexturePath = null)
     {
         using var workspace = new DpkWorkspace();
         workspace.OpenSingleArchive(Path.Combine(root, archiveName));
@@ -92,8 +113,38 @@ public static class SelfTest
         IReadOnlyList<ModelTextureBinding> bindings = workspace.ResolveModelTextures(model);
         ModelTextureBinding baseMap = bindings.First(binding =>
             binding.MapType.StartsWith("BaseMap", StringComparison.OrdinalIgnoreCase));
+        if (expectedTexturePath is not null &&
+            !baseMap.TextureAsset.Entry.Path.Equals(expectedTexturePath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"{modelPath} 默认贴图应为 {expectedTexturePath}，实际为 {baseMap.TextureAsset.Entry.Path}。");
+        }
+
         DecodedTexture texture = DdsDecoder.Decode(workspace.Extract(baseMap.TextureAsset));
         report.AppendLine($"{archiveName} 贴图链: {model.Name} → {baseMap.ConfigPath} → {baseMap.TextureAsset.Entry.Path}；{texture.Width}×{texture.Height} {texture.Format}");
+    }
+
+    private static void CheckSmallScaleModel(StringBuilder report, string root, string archiveName, string modelPath)
+    {
+        using var workspace = new DpkWorkspace();
+        workspace.OpenSingleArchive(Path.Combine(root, archiveName));
+        AssetEntry model = workspace.Assets.First(asset =>
+            asset.Kind == AssetKind.Model && asset.Entry.Path.Equals(modelPath, StringComparison.OrdinalIgnoreCase));
+        PmfMesh mesh = PmfParser.Parse(workspace.Extract(model));
+        int renderableTriangles = 0;
+        for (int offset = 0; offset + 2 < mesh.Indices.Count; offset += 3)
+        {
+            System.Numerics.Vector3 a = mesh.Vertices[mesh.Indices[offset]];
+            System.Numerics.Vector3 b = mesh.Vertices[mesh.Indices[offset + 1]];
+            System.Numerics.Vector3 c = mesh.Vertices[mesh.Indices[offset + 2]];
+            System.Numerics.Vector3 normal = System.Numerics.Vector3.Cross(b - a, c - a);
+            if (normal.LengthSquared() > 1e-20f) renderableTriangles++;
+        }
+
+        if (renderableTriangles < mesh.DeclaredTriangleCount * 0.9)
+            throw new InvalidDataException(
+                $"{modelPath} 可渲染三角面过少：{renderableTriangles:N0} / {mesh.DeclaredTriangleCount:N0}。");
+        report.AppendLine($"{archiveName} 小尺度模型: {model.Name}；{renderableTriangles:N0} / {mesh.DeclaredTriangleCount:N0} 个三角面可填充");
     }
 
     private static void CheckCompleteClientIndex(StringBuilder report, string root)
