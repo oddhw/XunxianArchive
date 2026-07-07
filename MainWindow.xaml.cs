@@ -20,6 +20,8 @@ namespace XunxianDpkViewer;
 
 public sealed partial class MainWindow : Window
 {
+    private const string AppVersion = "1.0";
+    private const string AppAuthor = "黑风岭-梵心似火";
     private readonly DpkWorkspace _workspace = new();
     private List<AssetItemViewModel> _items = new();
     private readonly DispatcherTimer _searchTimer;
@@ -582,6 +584,83 @@ public sealed partial class MainWindow : Window
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
         StorageFile? file = await picker.PickSingleFileAsync();
         if (file is not null) await LoadArchiveAsync(file.Path);
+    }
+
+    private async void SettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var pathBox = new TextBox
+        {
+            Header = "当前资源路径",
+            Text = string.IsNullOrWhiteSpace(CurrentPathText.Text) ? "尚未选择" : CurrentPathText.Text,
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var chooseButton = new Button
+        {
+            Content = "更换资源目录",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(18, 9, 18, 9)
+        };
+        var panel = new StackPanel { Spacing = 14, Width = 620 };
+        panel.Children.Add(pathBox);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "可选择《新寻仙》安装目录，也可以直接选择其中的 res 目录。设置成功后程序会记住路径。",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SecondaryTextBrush"]
+        });
+        panel.Children.Add(chooseButton);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "设置",
+            Content = panel,
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Close
+        };
+        chooseButton.Click += async (_, _) =>
+        {
+            dialog.Hide();
+            await PickAndLoadResourceFolderAsync();
+        };
+        await dialog.ShowAsync();
+    }
+
+    private async void AboutButton_Click(object sender, RoutedEventArgs e)
+    {
+        var panel = new StackPanel { Spacing = 10, Width = 480 };
+        panel.Children.Add(new Image
+        {
+            Source = new BitmapImage(new Uri("ms-appx:///Assets/XunxianIcon.png")),
+            Width = 72,
+            Height = 72,
+            HorizontalAlignment = HorizontalAlignment.Left
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "寻仙 DPK 资源浏览器",
+            FontSize = 22,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+        });
+        panel.Children.Add(new TextBlock { Text = $"版本：{AppVersion}" });
+        panel.Children.Add(new TextBlock { Text = $"作者：{AppAuthor}" });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "用于浏览、解释和导出《新寻仙》客户端 DPK 资源。",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SecondaryTextBrush"]
+        });
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "关于",
+            Content = panel,
+            CloseButtonText = "关闭"
+        };
+        await dialog.ShowAsync();
     }
 
     private async void ExportSelectedButton_Click(object sender, RoutedEventArgs e)

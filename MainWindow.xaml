@@ -19,8 +19,13 @@
             <Border Width="30" Height="30" Margin="14,0,10,0" CornerRadius="7" Background="{StaticResource SurfaceRaisedBrush}">
                 <Image Source="Assets/XunxianIcon.png" Width="24" Height="24" Stretch="Uniform" />
             </Border>
-            <TextBlock Grid.Column="1" Text="寻仙 DPK 资源浏览器" VerticalAlignment="Center"
-                       Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="14" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <TextBlock Text="寻仙 DPK 资源浏览器"
+                           Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="14" />
+                <Border Padding="7,2" CornerRadius="8" Background="{StaticResource AccentSurfaceBrush}">
+                    <TextBlock Text="v1.0" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
+                </Border>
+            </StackPanel>
             <TextBlock Grid.Column="2" x:Name="ArchiveSummaryText" Margin="0,0,16,0"
                        VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" FontSize="12" />
         </Grid>
@@ -89,6 +94,18 @@
                                 <StackPanel Orientation="Horizontal" Spacing="7">
                                     <FontIcon Glyph="&#xE896;" FontSize="14" />
                                     <TextBlock Text="导出查询结果" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="SettingsButton_Click" ToolTipService.ToolTip="设置资源目录">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <FontIcon Glyph="&#xE713;" FontSize="14" />
+                                    <TextBlock Text="设置" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="AboutButton_Click" ToolTipService.ToolTip="版本与作者信息">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <FontIcon Glyph="&#xE946;" FontSize="14" />
+                                    <TextBlock Text="关于" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>

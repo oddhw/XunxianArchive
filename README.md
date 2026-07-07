@@ -1,39 +1,67 @@
 # 寻仙 DPK 资源浏览器
 
-一个基于 WinUI 3 的本地资源工具，直接读取《新寻仙》客户端的 `whpackage1.0` DPK 包。
+一个基于 WinUI 3 的《新寻仙》客户端资源浏览与导出工具。
+
+- 当前版本：1.0
+- 作者：黑风岭-梵心似火
+- 系统：Windows x64
 
 ## 直接使用
 
-普通用户可以从 GitHub Releases 下载单文件版 `XunxianDpkViewer.exe`，无需安装 .NET，也不需要把其他 DLL 放在程序旁边。首次启动时选择《新寻仙》客户端或 `res` 目录即可。
+从 GitHub Releases 下载单文件版 `XunxianDpkViewer.exe`，无需安装 .NET，也无需把其他 DLL 放在程序旁边。
 
-## 已支持
+首次启动时选择《新寻仙》安装目录或其中的 `res` 目录。之后可以通过软件顶部的“设置”查看和更换资源路径。
 
-- 图标与贴图：PNG、JPG、DDS 等缩略图和大图预览。
-- 声音：OGG、WAV 直接播放。
-- 模型：解析 PMF 顶点、UV 与三角形索引，并沿 CCT/CMF 配置自动关联真实 DDS 贴图。
-- 模型预览：可在贴图、实体着色和线框之间切换，也可直接选择同一模型关联的不同贴图资源。
-- 组合模型：角色或大型对象目录会显示“完整组合”入口，同时保留 `mesh` 子目录中的独立 PMF 部件查看。
-- 模型导出：将 PMF 完整几何、UV 和重建法线转换为通用 Wavefront OBJ。
-- 解包：导出单个资源，或按搜索条件批量导出并保留包名和内部目录结构。
-- 首次启动手动选择游戏目录或 `res` 目录，随后记住路径；换电脑后会重新显示路径引导。
+## 主要功能
+
+- 自动读取客户端 `res` 目录中的全部 DPK。
+- 按 DPK 内的真实文件夹结构浏览资源。
+- 预览 PNG、JPG、DDS 等图像与贴图。
+- 试听 OGG、WAV 音乐和音效。
+- 解析 PMF 模型并关联 CCT、CMF 与 DDS 材质。
+- 支持贴图、实体、线框三种模型预览方式。
+- 自动组合一个对象目录中的多个 PMF 部件，同时保留单独部件查看。
+- 将 PMF 模型导出为 Wavefront OBJ。
+- 单选、多选或按当前查询结果批量导出资源，并保留原始目录结构。
+- “新手说明”会把常见引擎文件翻译成容易理解的用途说明，并标注识别可信度。
+- XML、CCT、CMF 等文本配置可展开查看格式化原文。
+- 文件属性窗口显示格式、大小、DPK、内部路径、索引块和 SHA-256。
 
 ## 构建
 
-需要 .NET 10 SDK。项目使用 Windows App SDK 2.2，目标为 Windows x64：
+需要 .NET 10 SDK，目标平台为 Windows x64。
 
 ```powershell
 dotnet restore .\XunxianDpkViewer.csproj
 dotnet build .\XunxianDpkViewer.csproj -c Release -p:Platform=x64
 ```
 
-这是自包含的非 MSIX WinUI 3 项目。运行发布脚本后，会在仓库根目录生成可直接双击的单文件程序：
+生成自包含单文件版本：
 
 ```powershell
 .\publish-single.cmd
 ```
 
-发布后的程序直接位于 `XunxianDpkViewerPublish\XunxianDpkViewer.exe`。也可以给程序传入 `--self-test`，用已安装的客户端资源执行 DPK、PNG、OGG 和 PMF 解码自检，结果写入 `%LOCALAPPDATA%\XunxianDpkViewer\self-test.log`。
+发布后的程序位于仓库根目录：
+
+```text
+XunxianDpkViewer.exe
+```
+
+## 自检
+
+安装了《新寻仙》客户端的电脑可执行：
+
+```powershell
+.\XunxianDpkViewer.exe --self-test
+```
+
+结果写入：
+
+```text
+%LOCALAPPDATA%\XunxianDpkViewer\self-test.log
+```
 
 ## 格式说明
 
-DPK/WHSC 解码使用客户端实际密钥与块链格式。PMF 实体预览覆盖寻仙常见的静态、带法线、多 UV、颜色以及骨骼权重顶点声明。OBJ 会导出完整几何和首个 UV 通道；客户端专用材质着色器、骨骼动画与多个 PMF 部件的自动组装仍需要继续解析对应配置文件。
+DPK/WHSC 解码使用客户端实际密钥与块链格式。模型预览目前覆盖常见 PMF 静态网格、多 UV、颜色、骨骼权重顶点声明、CCT/CMF 材质链和 DDS 贴图；客户端专用着色器、完整骨骼动画及部分引擎内部配置仍在继续解析。
