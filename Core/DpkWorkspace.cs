@@ -14,8 +14,20 @@ public sealed class DpkWorkspace : IDisposable
         ".wav", ".ogg"
     };
 
+    private static readonly HashSet<string> FontExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".ttf", ".otf", ".ttc"
+    };
+
+    private static readonly string[] PreferredArchiveOrder =
+    {
+        "gui.dpk", "font.dpk", "sound.dpk", "music.dpk", "obj.dpk", "cha.dpk",
+        "gfx.dpk", "scn.dpk", "terr.dpk", "water.dpk", "sky.dpk", "movie.dpk", "system.dpk"
+    };
+
     private readonly Dictionary<string, DpkReader> _readers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<AssetEntry> _assets = new();
+    private ModelTextureResolver? _modelTextureResolver;
 
     public IReadOnlyList<AssetEntry> Assets => _assets;
     public IReadOnlyCollection<string> ArchivePaths => _readers.Keys;
@@ -25,21 +37,18 @@ public sealed class DpkWorkspace : IDisposable
         foreach (DpkReader reader in _readers.Values) reader.Dispose();
         _readers.Clear();
         _assets.Clear();
+        _modelTextureResolver = null;
     }
 
     public void OpenClientResourceFolder(string folder)
     {
-        string[] preferredArchives =
-        {
-            "gui.dpk", "sound.dpk", "music.dpk", "obj.dpk", "cha.dpk"
-        };
-
-        var archives = preferredArchives
-            .Select(name => System.IO.Path.Combine(folder, name))
-            .Where(File.Exists)
+        var archiveOrder = PreferredArchiveOrder
+            .Select((name, index) => (name, index))
+            .ToDictionary(item => item.name, item => item.index, StringComparer.OrdinalIgnoreCase);
+        string[] archives = Directory.GetFiles(folder, "*.dpk", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => archiveOrder.TryGetValue(System.IO.Path.GetFileName(path), out int index) ? index : int.MaxValue)
+            .ThenBy(path => System.IO.Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        if (archives.Length == 0)
-            archives = Directory.GetFiles(folder, "*.dpk", SearchOption.TopDirectoryOnly);
         if (archives.Length == 0)
             throw new DirectoryNotFoundException("所选目录中没有 DPK 文件。");
 
@@ -54,6 +63,12 @@ public sealed class DpkWorkspace : IDisposable
     }
 
     public byte[] Extract(AssetEntry asset) => _readers[asset.ArchivePath].Extract(asset.Entry);
+
+    public IReadOnlyList<ModelTextureBinding> ResolveModelTextures(AssetEntry model) =>
+        (_modelTextureResolver ??= new ModelTextureResolver(this)).Resolve(model);
+
+    public IReadOnlyList<CompositeModelEntry> FindCompositeModels(string archivePath, string folderPath) =>
+        (_modelTextureResolver ??= new ModelTextureResolver(this)).FindComposites(archivePath, folderPath);
 
     public void ExtractTo(AssetEntry asset, string rootFolder)
     {
@@ -91,6 +106,7 @@ public sealed class DpkWorkspace : IDisposable
         if (ImageExtensions.Contains(extension)) return AssetKind.Image;
         if (SoundExtensions.Contains(extension)) return AssetKind.Sound;
         if (extension.Equals(".pmf", StringComparison.OrdinalIgnoreCase)) return AssetKind.Model;
+        if (FontExtensions.Contains(extension)) return AssetKind.Font;
         return AssetKind.Other;
     }
 

@@ -9,6 +9,7 @@ public enum AssetKind
     Image,
     Sound,
     Model,
+    Font,
     Other
 }
 
@@ -42,22 +43,34 @@ public sealed class AssetItemViewModel : INotifyPropertyChanged
 {
     private ImageSource? _thumbnail;
     private string _subtitle;
+    private readonly string _name;
 
-    public AssetItemViewModel(AssetEntry asset)
+    public AssetItemViewModel(AssetEntry asset, string? displayName = null, string? subtitle = null)
     {
         Asset = asset;
-        _subtitle = asset.Entry.Path;
+        _name = displayName ?? asset.Name;
+        _subtitle = subtitle ?? asset.Entry.Path;
     }
 
-    public AssetEntry Asset { get; }
+    public AssetItemViewModel(CompositeModelEntry composite)
+    {
+        Composite = composite;
+        _name = composite.Name;
+        _subtitle = $"完整组合 · {composite.Parts.Count:N0} 个 PMF 部件";
+    }
+
+    public AssetEntry? Asset { get; }
+    public CompositeModelEntry? Composite { get; }
     public bool IsThumbnailLoading { get; set; }
-    public string Name => Asset.Name;
-    public string Path => Asset.Entry.Path;
-    public string ArchiveName => Asset.ArchiveName;
-    public string Glyph => Asset.Kind switch
+    public string Name => _name;
+    public string Path => Asset?.Entry.Path ?? Composite?.ConfigAsset.Entry.Path ?? string.Empty;
+    public string ArchiveName => Asset?.ArchiveName ?? Composite?.ConfigAsset.ArchiveName ?? string.Empty;
+    public string Glyph => Composite is not null ? "\uE902" : Asset?.Kind switch
     {
         AssetKind.Sound => "\uE8D6",
         AssetKind.Model => "\uE809",
+        AssetKind.Font => "\uE8D2",
+        AssetKind.Other => "\uE8A5",
         _ => "\uEB9F"
     };
 
@@ -91,3 +104,41 @@ public sealed record PmfMesh(
     uint VertexFlags,
     uint UvChannelCount,
     uint DeclaredTriangleCount);
+
+public sealed record DecodedTexture(
+    int Width,
+    int Height,
+    byte[] BgraPixels,
+    string Format);
+
+public sealed record ModelTextureBinding(
+    AssetEntry TextureAsset,
+    string MapType,
+    string MaterialName,
+    string ConfigPath)
+{
+    public string DisplayName => string.IsNullOrWhiteSpace(MaterialName)
+        ? $"{MapType} · {TextureAsset.Name}"
+        : $"{MaterialName} · {MapType} · {TextureAsset.Name}";
+
+    public override string ToString() => DisplayName;
+}
+
+public sealed record CompositeModelPart(
+    AssetEntry MeshAsset,
+    string MaterialName,
+    ModelTextureBinding? TextureBinding);
+
+public sealed record CompositeModelEntry(
+    string Name,
+    AssetEntry ConfigAsset,
+    IReadOnlyList<CompositeModelPart> Parts)
+{
+    public string DisplayPath => $"{ConfigAsset.ArchiveName}  /  {ConfigAsset.Entry.Path}";
+}
+
+public sealed record ModelRenderPart(
+    string Name,
+    PmfMesh Mesh,
+    DecodedTexture? Texture,
+    string TextureName);

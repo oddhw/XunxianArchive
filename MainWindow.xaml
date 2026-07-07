@@ -19,8 +19,13 @@
             <Border Width="30" Height="30" Margin="14,0,10,0" CornerRadius="7" Background="{StaticResource SurfaceRaisedBrush}">
                 <Image Source="Assets/XunxianIcon.png" Width="24" Height="24" Stretch="Uniform" />
             </Border>
-            <TextBlock Grid.Column="1" Text="寻仙 DPK 资源浏览器" VerticalAlignment="Center"
-                       Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="14" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <TextBlock Text="寻仙 DPK 资源浏览器"
+                           Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="14" />
+                <Border Padding="7,2" CornerRadius="8" Background="{StaticResource AccentSurfaceBrush}">
+                    <TextBlock Text="v1.0" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
+                </Border>
+            </StackPanel>
             <TextBlock Grid.Column="2" x:Name="ArchiveSummaryText" Margin="0,0,16,0"
                        VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" FontSize="12" />
         </Grid>
@@ -46,6 +51,12 @@
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="ModelNavigationItem" Content="模型" Tag="model" Foreground="{StaticResource PrimaryTextBrush}">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE809;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="字体" Tag="font" Foreground="{StaticResource PrimaryTextBrush}">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D2;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="配置与其他" Tag="other" Foreground="{StaticResource PrimaryTextBrush}">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
@@ -85,6 +96,18 @@
                                     <TextBlock Text="导出查询结果" />
                                 </StackPanel>
                             </Button>
+                            <Button Click="SettingsButton_Click" ToolTipService.ToolTip="设置资源目录">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <FontIcon Glyph="&#xE713;" FontSize="14" />
+                                    <TextBlock Text="设置" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="AboutButton_Click" ToolTipService.ToolTip="版本与作者信息">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <FontIcon Glyph="&#xE946;" FontSize="14" />
+                                    <TextBlock Text="关于" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </Grid>
 
@@ -92,14 +115,19 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="360" />
                             <ColumnDefinition Width="190" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <AutoSuggestBox x:Name="SearchBox"
+                                        Height="40"
+                                        VerticalAlignment="Center"
                                         PlaceholderText="搜索文件名或资源路径"
                                         TextChanged="SearchBox_TextChanged" />
                         <ComboBox x:Name="SortComboBox"
                                   Grid.Column="1"
                                   Margin="10,0,0,0"
+                                  Height="40"
+                                  VerticalAlignment="Center"
                                   SelectedIndex="0"
                                   SelectionChanged="SortComboBox_SelectionChanged"
                                   ToolTipService.ToolTip="排序方式">
@@ -109,7 +137,15 @@
                             <ComboBoxItem Content="包内完整路径" />
                             <ComboBoxItem Content="DPK 原始顺序" />
                         </ComboBox>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="10">
+                        <ToggleSwitch x:Name="BeginnerModeToggle"
+                                      Grid.Column="2"
+                                      Margin="16,0,0,0"
+                                      Header="新手说明"
+                                      IsOn="True"
+                                      OnContent="已开启"
+                                      OffContent="原始名称"
+                                      Toggled="BeginnerModeToggle_Toggled" />
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="10">
                             <ProgressRing x:Name="BusyRing" Width="18" Height="18" IsActive="False" />
                             <TextBlock x:Name="StatusText" Foreground="{StaticResource SecondaryTextBrush}" Text="等待载入资源" />
                             <TextBlock x:Name="CurrentPathText" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="420" />
@@ -223,7 +259,7 @@
                                                 </Border>
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Name}" Foreground="{StaticResource PrimaryTextBrush}" TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Text="{Binding Path}" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                                    <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
                                                 </StackPanel>
                                                 <Border Grid.Column="2" Padding="8,3" CornerRadius="8" Background="{StaticResource SubtleSurfaceBrush}" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding ArchiveName}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="10" />
@@ -274,12 +310,64 @@
                                                     Visibility="Collapsed"
                                                     HorizontalContentAlignment="Stretch"
                                                     VerticalContentAlignment="Stretch" />
+                                    <Grid x:Name="GenericPreviewPanel" Visibility="Collapsed">
+                                        <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="14">
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                          HorizontalScrollMode="Disabled"
+                                                          HorizontalScrollBarVisibility="Disabled"
+                                                          HorizontalContentAlignment="Stretch"
+                                                          Padding="24">
+                                                <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Center" Spacing="12">
+                                                    <Border Width="82" Height="82" CornerRadius="24" Background="{StaticResource AccentSurfaceBrush}" HorizontalAlignment="Left">
+                                                        <FontIcon x:Name="GenericPreviewIcon" Glyph="&#xE8A5;" FontSize="36" Foreground="{StaticResource AccentTextBrush}" />
+                                                    </Border>
+                                                    <TextBlock x:Name="GenericPreviewNameText" Text="选择一个资源文件" Foreground="{StaticResource PrimaryTextBrush}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                    <TextBlock x:Name="GenericPreviewRawNameText" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextWrapping="Wrap" />
+                                                    <Border Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,6,0,0">
+                                                        <StackPanel Spacing="10">
+                                                            <TextBlock Text="它是做什么的？" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                            <TextBlock x:Name="GenericPreviewPurposeText" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
+                                                            <TextBlock Text="游戏什么时候会用？" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" Margin="0,4,0,0" />
+                                                            <TextBlock x:Name="GenericPreviewUsageText" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" />
+                                                            <TextBlock x:Name="GenericPreviewConfidenceText" Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <TextBlock x:Name="GenericPreviewTechnicalText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" />
+                                                    <TextBlock x:Name="GenericPreviewHintText" Text="可查看属性或导出原始文件" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                                    <Expander x:Name="GenericTextExpander" Header="查看原始文本（高级）" Visibility="Collapsed">
+                                                        <TextBox x:Name="GenericTextPreviewBox"
+                                                                 IsReadOnly="True"
+                                                                 AcceptsReturn="True"
+                                                                 TextWrapping="NoWrap"
+                                                                 FontFamily="Consolas"
+                                                                 FontSize="11"
+                                                                 Height="240"
+                                                                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                                                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                                                    </Expander>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                        </Border>
+                                    </Grid>
                                 </Grid>
 
                                 <StackPanel Grid.Row="1" Margin="2,16,2,2" Spacing="8">
                                     <TextBlock x:Name="SelectedNameText" Text="尚未选择资源" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="16" TextWrapping="Wrap" />
                                     <TextBlock x:Name="SelectedPathText" Text="从左侧选择图标、声音或模型" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextWrapping="Wrap" MaxHeight="48" />
                                     <TextBlock x:Name="SelectedMetadataText" Foreground="{StaticResource AccentTextBrush}" FontSize="11" TextWrapping="Wrap" />
+                                    <Grid x:Name="ModelTextureSelector" Visibility="Collapsed" ColumnSpacing="10" Margin="0,3,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="贴图资源" VerticalAlignment="Center" Foreground="{StaticResource SecondaryTextBrush}" />
+                                        <ComboBox x:Name="ModelTextureComboBox"
+                                                  Grid.Column="1"
+                                                  MinWidth="260"
+                                                  HorizontalAlignment="Stretch"
+                                                  PlaceholderText="没有找到关联贴图"
+                                                  SelectionChanged="ModelTextureComboBox_SelectionChanged" />
+                                    </Grid>
                                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                         <Button x:Name="ExportSelectedButton" Click="ExportSelectedButton_Click" IsEnabled="False">
                                             <StackPanel Orientation="Horizontal" Spacing="7">

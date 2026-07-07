@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Text;
+using System.Xml.Linq;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -18,6 +20,8 @@ namespace XunxianDpkViewer;
 
 public sealed partial class MainWindow : Window
 {
+    private const string AppVersion = "1.0";
+    private const string AppAuthor = "黑风岭-梵心似火";
     private readonly DpkWorkspace _workspace = new();
     private List<AssetItemViewModel> _items = new();
     private readonly DispatcherTimer _searchTimer;
@@ -27,13 +31,18 @@ public sealed partial class MainWindow : Window
     private List<AssetEntry> _filteredAssets = new();
     private AssetKind _currentKind = AssetKind.Image;
     private AssetEntry? _selectedAsset;
+    private CompositeModelEntry? _selectedComposite;
     private int _sortMode;
     private int _thumbnailGeneration;
     private bool _isBusy;
     private bool _modelExpanded;
     private bool _buildingFolderTree;
     private bool _multiSelectMode;
+    private bool _settingModelTextureSelection;
     private FolderNodeInfo? _selectedFolder;
+
+    private bool UseBeginnerNames => BeginnerModeToggle?.IsOn == true &&
+        _currentKind is AssetKind.Font or AssetKind.Other;
 
     public MainWindow()
     {
@@ -45,7 +54,10 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = false;
         string iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "Xunxian.ico");
         if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
-        AppWindow.Resize(new SizeInt32(1600, 960));
+        DisplayArea displayArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+        AppWindow.Resize(new SizeInt32(
+            Math.Min(1600, Math.Max(1100, displayArea.WorkArea.Width - 32)),
+            Math.Min(960, Math.Max(720, displayArea.WorkArea.Height - 32))));
 
         ImageGrid.ItemsSource = _items;
         AssetList.ItemsSource = _items;
@@ -138,7 +150,9 @@ public sealed partial class MainWindow : Window
         int images = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Image);
         int sounds = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Sound);
         int models = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Model);
-        ArchiveSummaryText.Text = $"{_workspace.ArchivePaths.Count} 个包 · {images:N0} 图像 · {sounds:N0} 声音 · {models:N0} 模型";
+        int fonts = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Font);
+        int others = _workspace.Assets.Count(asset => asset.Kind == AssetKind.Other);
+        ArchiveSummaryText.Text = $"{_workspace.ArchivePaths.Count} 个包 · {images:N0} 图像 · {sounds:N0} 声音 · {models:N0} 模型 · {fonts:N0} 字体 · {others:N0} 其他";
         BatchExportButton.IsEnabled = true;
         BuildFolderTree();
         ApplyFilter();
@@ -166,6 +180,8 @@ public sealed partial class MainWindow : Window
             AssetKind.Image => "gui.dpk",
             AssetKind.Sound => "sound.dpk",
             AssetKind.Model => "obj.dpk",
+            AssetKind.Font => "font.dpk",
+            AssetKind.Other => "gfx.dpk",
             _ => string.Empty
         };
         string preferredPath = _currentKind switch
@@ -181,9 +197,12 @@ public sealed partial class MainWindow : Window
                      .ThenBy(group => System.IO.Path.GetFileName(group.Key), StringComparer.OrdinalIgnoreCase))
         {
             string archiveName = System.IO.Path.GetFileName(archive.Key);
+            string archiveDisplayName = UseBeginnerNames
+                ? ResourceExplanationService.GetArchiveDisplayName(archiveName)
+                : archiveName;
             var root = new TreeViewNode
             {
-                Content = new FolderNodeInfo(archiveName, archive.Key, string.Empty),
+                Content = new FolderNodeInfo(archiveDisplayName, archive.Key, string.Empty),
                 IsExpanded = true
             };
             FolderTree.RootNodes.Add(root);
@@ -193,10 +212,17 @@ public sealed partial class MainWindow : Window
             {
                 [string.Empty] = root
             };
-            IEnumerable<string> directories = archive
-                .Select(asset => GetInternalDirectory(asset.Entry.Path))
-                .Where(path => path.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+            var directorySet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string assetDirectory in archive.Select(asset => GetInternalDirectory(asset.Entry.Path)))
+            {
+                string directory = assetDirectory;
+                while (directory.Length > 0 && directorySet.Add(directory))
+                {
+                    int parentSlash = directory.LastIndexOf('/');
+                    directory = parentSlash < 0 ? string.Empty : directory[..parentSlash];
+                }
+            }
+            IEnumerable<string> directories = directorySet
                 .OrderBy(path => path.Count(character => character == '/'))
                 .ThenBy(path => path, StringComparer.OrdinalIgnoreCase);
 
@@ -205,11 +231,14 @@ public sealed partial class MainWindow : Window
                 int slash = directory.LastIndexOf('/');
                 string parentPath = slash < 0 ? string.Empty : directory[..slash];
                 string folderName = slash < 0 ? directory : directory[(slash + 1)..];
+                string folderDisplayName = UseBeginnerNames
+                    ? ResourceExplanationService.GetFolderDisplayName(folderName)
+                    : folderName;
                 if (!nodesByPath.TryGetValue(parentPath, out TreeViewNode? parent)) continue;
 
                 var node = new TreeViewNode
                 {
-                    Content = new FolderNodeInfo(folderName, archive.Key, directory)
+                    Content = new FolderNodeInfo(folderDisplayName, archive.Key, directory)
                 };
                 parent.Children.Add(node);
                 nodesByPath[directory] = node;
@@ -220,6 +249,8 @@ public sealed partial class MainWindow : Window
             {
                 preferredNode = categoryDefault;
                 categoryDefault.IsExpanded = true;
+                for (TreeViewNode? ancestor = categoryDefault.Parent; ancestor is not null; ancestor = ancestor.Parent)
+                    ancestor.IsExpanded = true;
             }
         }
 
@@ -276,7 +307,9 @@ public sealed partial class MainWindow : Window
             .Where(IsAssetInSelectedFolder)
             .Where(asset => terms.Length == 0 || terms.All(term =>
                 asset.Entry.Path.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                asset.ArchiveName.Contains(term, StringComparison.OrdinalIgnoreCase)));
+                asset.ArchiveName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                (UseBeginnerNames && ResourceExplanationService.GetSearchText(asset)
+                    .Contains(term, StringComparison.OrdinalIgnoreCase))));
         query = _sortMode switch
         {
             1 => query.OrderByDescending(asset => asset.Name, NaturalStringComparer.Instance),
@@ -293,13 +326,33 @@ public sealed partial class MainWindow : Window
     private void PopulateAssets()
     {
         _thumbnailGeneration++;
-        _items = _filteredAssets.Select(asset => new AssetItemViewModel(asset)).ToList();
+        var items = new List<AssetItemViewModel>();
+        int compositeCount = 0;
+        if (_currentKind == AssetKind.Model && _selectedFolder is not null && string.IsNullOrWhiteSpace(SearchBox.Text))
+        {
+            IReadOnlyList<CompositeModelEntry> composites = _workspace.FindCompositeModels(
+                _selectedFolder.ArchivePath,
+                _selectedFolder.InternalPath);
+            items.AddRange(composites.Select(composite => new AssetItemViewModel(composite)));
+            compositeCount = composites.Count;
+        }
+        items.AddRange(_filteredAssets.Select(CreateAssetItem));
+        _items = items;
         ImageGrid.ItemsSource = _items;
         AssetList.ItemsSource = _items;
         EmptyPanel.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         string scope = string.IsNullOrWhiteSpace(SearchBox.Text) ? "当前文件夹" : "当前目录及子目录";
-        SetStatus($"{scope}找到 {_filteredAssets.Count:N0} 个资源，已全部显示");
+        string compositeStatus = compositeCount > 0 ? $"，其中 {compositeCount:N0} 个完整组合模型" : string.Empty;
+        SetStatus($"{scope}找到 {_items.Count:N0} 个资源{compositeStatus}，已全部显示");
         UpdateSelectionUi(0);
+    }
+
+    private AssetItemViewModel CreateAssetItem(AssetEntry asset)
+    {
+        if (!UseBeginnerNames) return new AssetItemViewModel(asset);
+        ResourceExplanation explanation = ResourceExplanationService.Explain(asset);
+        return new AssetItemViewModel(asset, explanation.FriendlyName,
+            $"原始文件：{asset.Name} · {explanation.Purpose}");
     }
 
     private void ImageGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -310,7 +363,7 @@ public sealed partial class MainWindow : Window
 
     private async Task LoadThumbnailAsync(AssetItemViewModel item, int generation)
     {
-        if (item.Thumbnail is not null || item.IsThumbnailLoading) return;
+        if (item.Asset is null || item.Thumbnail is not null || item.IsThumbnailLoading) return;
         item.IsThumbnailLoading = true;
         try
         {
@@ -343,37 +396,137 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _selectedAsset = item.Asset;
-        SelectedNameText.Text = selectedCount > 1 ? $"{item.Asset.Name}（已选择 {selectedCount:N0} 项）" : item.Asset.Name;
-        SelectedPathText.Text = item.Asset.DisplayPath;
+        if (item.Composite is CompositeModelEntry composite)
+        {
+            _selectedAsset = null;
+            _selectedComposite = composite;
+            SelectedNameText.Text = composite.Name;
+            SelectedPathText.Text = composite.DisplayPath;
+            SelectedMetadataText.Text = $"正在组合 {composite.Parts.Count:N0} 个模型部件及贴图…";
+            ModelTextureSelector.Visibility = Visibility.Collapsed;
+            await PreviewCompositeModelAsync(composite);
+            return;
+        }
+        if (item.Asset is not AssetEntry asset) return;
+
+        _selectedComposite = null;
+        _selectedAsset = asset;
+        SelectedNameText.Text = selectedCount > 1 ? $"{item.Name}（已选择 {selectedCount:N0} 项）" : item.Name;
+        SelectedPathText.Text = asset.DisplayPath;
         SelectedMetadataText.Text = "正在读取…";
 
         try
         {
-            byte[] data = await Task.Run(() => _workspace.Extract(item.Asset));
-            if (_selectedAsset != item.Asset) return;
+            byte[] data = await Task.Run(() => _workspace.Extract(asset));
+            if (_selectedAsset != asset) return;
 
-            if (item.Asset.Kind == AssetKind.Image)
+            if (asset.Kind == AssetKind.Image)
             {
                 PreviewImage.Source = await CreateBitmapAsync(data, 0);
-                SelectedMetadataText.Text = $"{item.Asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
+                SelectedMetadataText.Text = $"{asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
             }
-            else if (item.Asset.Kind == AssetKind.Sound)
+            else if (asset.Kind == AssetKind.Sound)
             {
-                await PlaySoundAsync(item.Asset, data);
-                SelectedMetadataText.Text = $"{item.Asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
+                await PlaySoundAsync(asset, data);
+                SelectedMetadataText.Text = $"{asset.Extension.TrimStart('.').ToUpperInvariant()} · {FormatBytes(data.Length)}";
             }
-            else if (item.Asset.Kind == AssetKind.Model)
+            else if (asset.Kind == AssetKind.Model)
             {
-                PmfMesh mesh = await Task.Run(() => PmfParser.Parse(data));
-                if (_selectedAsset != item.Asset) return;
+                (PmfMesh mesh, IReadOnlyList<ModelTextureBinding> textures) = await Task.Run(() =>
+                    (PmfParser.Parse(data), _workspace.ResolveModelTextures(asset)));
+                if (_selectedAsset != asset) return;
                 _modelPreview.SetMesh(mesh);
-                SelectedMetadataText.Text = $"PMF v{mesh.Version} · {mesh.Vertices.Count:N0} 顶点 · {mesh.DeclaredTriangleCount:N0} 三角面 · {mesh.UvChannelCount} UV 通道 · {FormatBytes(data.Length)}";
+                ModelTextureSelector.Visibility = Visibility.Visible;
+                _settingModelTextureSelection = true;
+                ModelTextureComboBox.ItemsSource = textures;
+                ModelTextureComboBox.SelectedIndex = textures.Count > 0 ? 0 : -1;
+                _settingModelTextureSelection = false;
+                SelectedMetadataText.Text = $"PMF v{mesh.Version} · {mesh.Vertices.Count:N0} 顶点 · {mesh.DeclaredTriangleCount:N0} 三角面 · {mesh.UvChannelCount} UV 通道 · {textures.Count:N0} 个关联贴图 · {FormatBytes(data.Length)}";
+                if (textures.Count > 0) await LoadModelTextureAsync(asset, textures[0]);
+            }
+            else
+            {
+                ResourceExplanation explanation = ResourceExplanationService.Explain(asset);
+                GenericPreviewNameText.Text = UseBeginnerNames ? explanation.FriendlyName : asset.Name;
+                GenericPreviewRawNameText.Text = $"原始文件：{asset.Name}\n包内路径：{asset.DisplayPath}";
+                GenericPreviewIcon.Glyph = asset.Kind == AssetKind.Font ? "\uE8D2" : "\uE8A5";
+                GenericPreviewPurposeText.Text = explanation.Purpose;
+                GenericPreviewUsageText.Text = explanation.UsedWhen;
+                GenericPreviewConfidenceText.Text = $"识别程度：{explanation.Confidence}";
+                GenericPreviewTechnicalText.Text = $"技术信息：{ResourceExplanationService.GetTechnicalSummary(asset, data.Length)}";
+                GenericPreviewHintText.Text = explanation.PreviewAdvice;
+                string? textPreview = TryCreateTextPreview(asset, data);
+                GenericTextPreviewBox.Text = textPreview ?? string.Empty;
+                GenericTextExpander.Visibility = textPreview is null ? Visibility.Collapsed : Visibility.Visible;
+                GenericTextExpander.IsExpanded = false;
+                SelectedMetadataText.Text = $"{explanation.FriendlyName} · {ResourceExplanationService.GetTechnicalSummary(asset, data.Length)}";
             }
         }
         catch (Exception ex)
         {
             SelectedMetadataText.Text = $"预览失败：{ex.Message}";
+        }
+    }
+
+    private async Task PreviewCompositeModelAsync(CompositeModelEntry composite)
+    {
+        try
+        {
+            ModelRenderPart[] renderParts = await Task.Run(() => composite.Parts.Select(part =>
+            {
+                PmfMesh mesh = PmfParser.Parse(_workspace.Extract(part.MeshAsset));
+                DecodedTexture? texture = null;
+                string textureName = string.Empty;
+                if (part.TextureBinding is ModelTextureBinding binding)
+                {
+                    try
+                    {
+                        texture = DdsDecoder.Decode(_workspace.Extract(binding.TextureAsset));
+                        textureName = binding.DisplayName;
+                    }
+                    catch
+                    {
+                        // 单个部件贴图不支持时，仍保留其实体着色几何。
+                    }
+                }
+                return new ModelRenderPart(part.MeshAsset.Name, mesh, texture, textureName);
+            }).ToArray());
+            if (_selectedComposite != composite) return;
+            _modelPreview.SetComposite(renderParts, composite.Name);
+            int vertices = renderParts.Sum(part => part.Mesh.Vertices.Count);
+            long triangles = renderParts.Sum(part => (long)part.Mesh.DeclaredTriangleCount);
+            int texturedParts = renderParts.Count(part => part.Texture is not null);
+            SelectedMetadataText.Text = $"完整组合 · {renderParts.Length:N0} 个 PMF 部件 · {vertices:N0} 顶点 · {triangles:N0} 三角面 · {texturedParts:N0} 个部件已加载贴图";
+        }
+        catch (Exception ex)
+        {
+            if (_selectedComposite != composite) return;
+            SelectedMetadataText.Text = $"组合模型预览失败：{ex.Message}";
+        }
+    }
+
+    private async void ModelTextureComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_settingModelTextureSelection || _selectedAsset?.Kind != AssetKind.Model ||
+            ModelTextureComboBox.SelectedItem is not ModelTextureBinding binding) return;
+        await LoadModelTextureAsync(_selectedAsset, binding);
+    }
+
+    private async Task LoadModelTextureAsync(AssetEntry modelAsset, ModelTextureBinding binding)
+    {
+        try
+        {
+            byte[] textureBytes = await Task.Run(() => _workspace.Extract(binding.TextureAsset));
+            DecodedTexture texture = await Task.Run(() => DdsDecoder.Decode(textureBytes));
+            if (_selectedAsset != modelAsset || !Equals(ModelTextureComboBox.SelectedItem, binding)) return;
+            _modelPreview.SetTexture(texture, binding.DisplayName);
+            SelectedMetadataText.Text = $"{SelectedMetadataText.Text.Split(" · 贴图：", StringSplitOptions.None)[0]} · 贴图：{texture.Width}×{texture.Height} {texture.Format}";
+        }
+        catch (Exception ex)
+        {
+            if (_selectedAsset != modelAsset) return;
+            _modelPreview.SetTexture(null, null);
+            SelectedMetadataText.Text = $"贴图预览失败：{ex.Message}；可切换到实体或线框模式";
         }
     }
 
@@ -433,6 +586,83 @@ public sealed partial class MainWindow : Window
         if (file is not null) await LoadArchiveAsync(file.Path);
     }
 
+    private async void SettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var pathBox = new TextBox
+        {
+            Header = "当前资源路径",
+            Text = string.IsNullOrWhiteSpace(CurrentPathText.Text) ? "尚未选择" : CurrentPathText.Text,
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var chooseButton = new Button
+        {
+            Content = "更换资源目录",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(18, 9, 18, 9)
+        };
+        var panel = new StackPanel { Spacing = 14, Width = 620 };
+        panel.Children.Add(pathBox);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "可选择《新寻仙》安装目录，也可以直接选择其中的 res 目录。设置成功后程序会记住路径。",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SecondaryTextBrush"]
+        });
+        panel.Children.Add(chooseButton);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "设置",
+            Content = panel,
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Close
+        };
+        chooseButton.Click += async (_, _) =>
+        {
+            dialog.Hide();
+            await PickAndLoadResourceFolderAsync();
+        };
+        await dialog.ShowAsync();
+    }
+
+    private async void AboutButton_Click(object sender, RoutedEventArgs e)
+    {
+        var panel = new StackPanel { Spacing = 10, Width = 480 };
+        panel.Children.Add(new Image
+        {
+            Source = new BitmapImage(new Uri("ms-appx:///Assets/XunxianIcon.png")),
+            Width = 72,
+            Height = 72,
+            HorizontalAlignment = HorizontalAlignment.Left
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "寻仙 DPK 资源浏览器",
+            FontSize = 22,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+        });
+        panel.Children.Add(new TextBlock { Text = $"版本：{AppVersion}" });
+        panel.Children.Add(new TextBlock { Text = $"作者：{AppAuthor}" });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "用于浏览、解释和导出《新寻仙》客户端 DPK 资源。",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SecondaryTextBrush"]
+        });
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "关于",
+            Content = panel,
+            CloseButtonText = "关闭"
+        };
+        await dialog.ShowAsync();
+    }
+
     private async void ExportSelectedButton_Click(object sender, RoutedEventArgs e)
     {
         AssetEntry[] assets = GetSelectedAssets();
@@ -482,6 +712,7 @@ public sealed partial class MainWindow : Window
                 AssetKind.Image => "图像",
                 AssetKind.Sound => "声音",
                 AssetKind.Model => "模型",
+                AssetKind.Font => "字体",
                 _ => "其他"
             };
             string details =
@@ -629,11 +860,14 @@ public sealed partial class MainWindow : Window
 
     private void CategoryNavigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (args.SelectedItemContainer?.Tag is not string tag) return;
+        NavigationViewItemBase? selectedItem = args.SelectedItem as NavigationViewItemBase ?? args.SelectedItemContainer;
+        if (selectedItem?.Tag is not string tag) return;
         _currentKind = tag switch
         {
             "sound" => AssetKind.Sound,
             "model" => AssetKind.Model,
+            "font" => AssetKind.Font,
+            "other" => AssetKind.Other,
             _ => AssetKind.Image
         };
         SearchBox.Text = string.Empty;
@@ -647,18 +881,41 @@ public sealed partial class MainWindow : Window
         bool images = _currentKind == AssetKind.Image;
         bool sounds = _currentKind == AssetKind.Sound;
         bool models = _currentKind == AssetKind.Model;
-        PageTitleText.Text = images ? "图标与贴图" : sounds ? "声音" : "模型";
-        PageDescriptionText.Text = images
-            ? "浏览 GUI 图标、装备图和 DDS 场景贴图"
-            : sounds
-                ? "直接试听 OGG 音乐、环境音与 WAV 音效"
-                : "大尺寸实体预览 PMF 模型，并可转换导出为 OBJ";
-        SearchBox.PlaceholderText = images ? "搜索图标名称或路径" : sounds ? "搜索音效、音乐或路径" : "搜索模型名称或路径";
+        bool fonts = _currentKind == AssetKind.Font;
+        bool others = _currentKind == AssetKind.Other;
+        PageTitleText.Text = _currentKind switch
+        {
+            AssetKind.Image => "图标与贴图",
+            AssetKind.Sound => "声音",
+            AssetKind.Model => "模型",
+            AssetKind.Font => "字体",
+            _ => "配置与其他"
+        };
+        PageDescriptionText.Text = _currentKind switch
+        {
+            AssetKind.Image => "浏览 GUI 图标、装备图和 DDS 场景贴图",
+            AssetKind.Sound => "直接试听 OGG 音乐、环境音与 WAV 音效",
+            AssetKind.Model => "大尺寸实体预览 PMF 模型，并可转换导出为 OBJ",
+            AssetKind.Font => "浏览 font.dpk 内的 TTF、OTF 和 TTC 字体资源",
+            _ => "浏览特效、场景、地形、天空、影片及各类配置文件"
+        };
+        SearchBox.PlaceholderText = _currentKind switch
+        {
+            AssetKind.Image => "搜索图标名称或路径",
+            AssetKind.Sound => "搜索音效、音乐或路径",
+            AssetKind.Model => "搜索模型名称或路径",
+            AssetKind.Font => "搜索字体名称或路径",
+            _ => "搜索配置、特效、场景或路径"
+        };
         ImageGrid.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
         AssetList.Visibility = images ? Visibility.Collapsed : Visibility.Visible;
         ImagePreviewPanel.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
         SoundPreviewPanel.Visibility = sounds ? Visibility.Visible : Visibility.Collapsed;
         ModelPreviewHost.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
+        GenericPreviewPanel.Visibility = fonts || others ? Visibility.Visible : Visibility.Collapsed;
+        BeginnerModeToggle.Visibility = fonts || others ? Visibility.Visible : Visibility.Collapsed;
+        ModelTextureSelector.Visibility = Visibility.Collapsed;
+        ModelTextureComboBox.ItemsSource = null;
         ExportModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         ExpandModelButton.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         SetMultiSelectMode(false);
@@ -674,18 +931,34 @@ public sealed partial class MainWindow : Window
         ImageGrid.SelectedItem = null;
         AssetList.SelectedItem = null;
         _selectedAsset = null;
+        _selectedComposite = null;
         ExportSelectedButton.IsEnabled = false;
         ExportSelectedButtonText.Text = "导出原始资源";
         PropertiesButton.IsEnabled = false;
         ExportModelButton.IsEnabled = false;
         SelectedNameText.Text = "尚未选择资源";
-        SelectedPathText.Text = images ? "从左侧选择一张图像" : sounds ? "从左侧选择一个声音" : "从左侧选择一个 PMF 模型";
+        SelectedPathText.Text = _currentKind switch
+        {
+            AssetKind.Image => "从左侧选择一张图像",
+            AssetKind.Sound => "从左侧选择一个声音",
+            AssetKind.Model => "从左侧选择一个 PMF 模型",
+            AssetKind.Font => "从左侧选择一个字体文件",
+            _ => "从左侧选择一个资源文件"
+        };
         SelectedMetadataText.Text = string.Empty;
+        GenericTextExpander.Visibility = Visibility.Collapsed;
+        GenericTextPreviewBox.Text = string.Empty;
+    }
+
+    private void BeginnerModeToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (FolderTree is null || SearchBox is null || _workspace.Assets.Count == 0) return;
+        BuildFolderTree();
+        ApplyFilter();
     }
 
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
         _searchTimer.Stop();
         _searchTimer.Start();
     }
@@ -738,17 +1011,18 @@ public sealed partial class MainWindow : Window
     private AssetEntry[] GetSelectedAssets() => GetActiveAssetList().SelectedItems
         .OfType<AssetItemViewModel>()
         .Select(item => item.Asset)
+        .OfType<AssetEntry>()
         .Distinct()
         .ToArray();
 
     private void UpdateSelectionUi(int selectedCount)
     {
-        ExportSelectedButton.IsEnabled = selectedCount > 0;
-        ExportSelectedButtonText.Text = _multiSelectMode
-            ? $"导出所选 ({selectedCount:N0})"
-            : "导出原始资源";
-        PropertiesButton.IsEnabled = selectedCount == 1;
         AssetEntry[] selected = GetSelectedAssets();
+        ExportSelectedButton.IsEnabled = selected.Length > 0;
+        ExportSelectedButtonText.Text = _multiSelectMode
+            ? $"导出所选 ({selected.Length:N0})"
+            : "导出原始资源";
+        PropertiesButton.IsEnabled = selected.Length == 1;
         ExportModelButton.IsEnabled = selected.Length == 1 && selected[0].Kind == AssetKind.Model;
     }
 
@@ -761,10 +1035,49 @@ public sealed partial class MainWindow : Window
             ? "可多选图像后批量导出"
             : _currentKind == AssetKind.Sound
                 ? "可多选声音后批量导出"
-                : "可多选模型后批量导出";
+                : _currentKind == AssetKind.Model
+                    ? "可多选模型后批量导出"
+                    : "可多选资源后批量导出";
         SelectedMetadataText.Text = string.Empty;
         PreviewImage.Source = null;
+        _selectedComposite = null;
         if (_currentKind == AssetKind.Model) _modelPreview.SetMesh(null);
+    }
+
+    private static string? TryCreateTextPreview(AssetEntry asset, byte[] data)
+    {
+        if (!ResourceExplanationService.IsTextPreviewSupported(asset) || data.Length == 0) return null;
+        const int maximumPreviewBytes = 2 * 1024 * 1024;
+        if (data.Length > maximumPreviewBytes)
+            return $"文件共有 {FormatBytes(data.Length)}，为避免界面卡顿，请导出后使用文本编辑器查看。";
+
+        string text;
+        using (var stream = new MemoryStream(data, writable: false))
+        using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            text = reader.ReadToEnd().Trim('\0', '\uFEFF', ' ', '\r', '\n');
+
+        if (text.Length == 0) return null;
+        int controlCharacters = text.Count(character =>
+            char.IsControl(character) && character is not '\r' and not '\n' and not '\t');
+        if (controlCharacters > Math.Max(4, text.Length / 100)) return null;
+        if (asset.Extension.Equals(".xml", StringComparison.OrdinalIgnoreCase) ||
+            asset.Extension.Equals(".cct", StringComparison.OrdinalIgnoreCase) ||
+            asset.Extension.Equals(".cmf", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                text = XDocument.Parse(text).ToString();
+            }
+            catch
+            {
+                // Keep the decoded original when an old client file is only XML-like.
+            }
+        }
+
+        const int maximumCharacters = 200_000;
+        return text.Length <= maximumCharacters
+            ? text
+            : text[..maximumCharacters] + "\n\n……内容过长，预览到此为止；导出原始文件可查看完整内容。";
     }
 
     private void SetBusy(bool busy, string? status = null)
