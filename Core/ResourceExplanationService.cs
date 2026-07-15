@@ -20,6 +20,7 @@ public static partial class ResourceExplanationService
             ["gfx.dpk"] = ("技能与环境特效", "技能光效、粒子、发光和其他视觉效果"),
             ["gui.dpk"] = ("界面与图标", "按钮、窗口、物品图标和界面配置"),
             ["movie.dpk"] = ("过场影片", "登录、剧情或宣传过场动画"),
+            ["mb.dpk"] = ("MB 玩法数据表", "物品、任务、技能、宠物、阵营、活动等客户端表数据"),
             ["music.dpk"] = ("背景音乐", "地图与剧情播放的背景音乐"),
             ["obj.dpk"] = ("场景物件", "建筑、石头、树木、武器等静态或共享模型"),
             ["scn.dpk"] = ("地图场景数据", "每张地图的分块、地形高度、草地、水面和摆件位置"),
@@ -47,9 +48,34 @@ public static partial class ResourceExplanationService
         {
             "area" => "区域总配置",
             "animation" => "动作动画",
+            "astrology" => "星象/命理表",
+            "avatar_cupboard" => "外观柜表",
+            "camp" => "阵营/营地表",
+            "chongziduikang" => "虫子对抗表",
+            "cmd" => "命令/指令表",
+            "collection" => "收集玩法表",
+            "compete" => "竞技玩法表",
             "config" => "模型与材质配置",
+            "equip" => "装备表",
+            "etc" => "杂项表",
             "grass" => "草地资源",
+            "guild" => "帮会/组织表",
+            "help" => "帮助说明表",
+            "help_bank" => "帮助库表",
+            "injury" => "伤害/受伤表",
+            "item" => "物品表",
+            "life" => "生活技能表",
             "mesh" => "模型部件",
+            "myland" => "家园/领地表",
+            "new_artifact" => "新法宝/神器表",
+            "object" => "对象表",
+            "passive" => "被动效果表",
+            "pet" => "宠物表",
+            "quest" => "任务表",
+            "scn" => "场景玩法表",
+            "sec_char" => "第二角色/副角色表",
+            "server" => "服务端同步表",
+            "skill" => "技能表",
             "skeleton" => "骨骼数据",
             "sky" => "天空资源",
             "special" => "独立角色与场景对象",
@@ -90,6 +116,9 @@ public static partial class ResourceExplanationService
         };
         if (known is not null) return known;
 
+        if (asset.Kind == AssetKind.MbTable)
+            return ExplainMbTable(asset);
+
         if (archive == "font.dpk" || extension is ".ttf" or ".otf" or ".ttc")
             return Known("游戏字体文件", "保存游戏界面实际使用的字形。", "界面绘制中文、数字或其他文字时使用。", false);
 
@@ -119,6 +148,10 @@ public static partial class ResourceExplanationService
     public static string GetTechnicalSummary(AssetEntry asset, int byteLength)
     {
         string size = FormatBytes(byteLength);
+        if (asset.Kind == AssetKind.MbTable)
+            return string.IsNullOrWhiteSpace(asset.Extension)
+                ? $"MB 表数据 · {size}"
+                : $"{asset.Extension.TrimStart('.').ToUpperInvariant()} MB 表数据 · {size}";
         return asset.Extension.ToLowerInvariant() switch
         {
             ".byte" => $"{size}，约 {byteLength:N0} 个 8 位数据值",
@@ -136,7 +169,31 @@ public static partial class ResourceExplanationService
     }
 
     public static bool IsTextPreviewSupported(AssetEntry asset) =>
-        asset.Extension.ToLowerInvariant() is ".xml" or ".txt" or ".cct" or ".cmf" or ".sit" or ".ort" or ".cty";
+        asset.Kind == AssetKind.MbTable ||
+        asset.Extension.ToLowerInvariant() is ".xml" or ".txt" or ".csv" or ".ini" or ".cfg" or ".cct" or ".cmf" or ".sit" or ".ort" or ".cty";
+
+    private static ResourceExplanation ExplainMbTable(AssetEntry asset)
+    {
+        string normalizedPath = asset.Entry.Path.Replace('\\', '/').Trim('/').ToLowerInvariant();
+        string topFolder = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
+        return topFolder switch
+        {
+            "item" => Known("物品数据表", "记录物品、道具、装备或消耗品相关数据。", "背包、掉落、商店、奖励和装备系统需要显示或判断物品时读取。", true, "根据 MB 目录推测"),
+            "equip" => Known("装备数据表", "记录装备部位、属性、限制或相关规则。", "角色穿戴、属性计算和装备展示时读取。", true, "根据 MB 目录推测"),
+            "quest" => Known("任务数据表", "记录任务、条件、奖励或流程相关数据。", "任务面板、NPC 对话和任务追踪系统读取。", true, "根据 MB 目录推测"),
+            "skill" => Known("技能数据表", "记录技能、效果、等级或施法规则。", "技能栏、战斗计算和技能说明显示时读取。", true, "根据 MB 目录推测"),
+            "pet" => Known("宠物数据表", "记录宠物、坐骑或伙伴相关参数。", "宠物展示、培养、召唤和属性系统读取。", true, "根据 MB 目录推测"),
+            "camp" => Known("阵营/营地数据表", "记录阵营、营地或势力相关配置。", "阵营关系、活动归属或地图营地逻辑读取。", true, "根据 MB 目录推测"),
+            "chongziduikang" => Known("虫子对抗玩法数据表", "记录虫子对抗玩法里的虫子、队伍、技能、奖励、效果和等级配置。", "打开虫子对抗玩法、显示单位或计算玩法数值时读取。", true, "根据 MB 目录推测"),
+            "guild" => Known("门派/帮会数据表", "记录组织、帮会或门派玩法相关配置。", "帮会界面、门派玩法或成员系统读取。", true, "根据 MB 目录推测"),
+            "compete" => Known("竞技玩法数据表", "记录比赛、竞技或排行类玩法配置。", "竞技活动、匹配和排名展示时读取。", true, "根据 MB 目录推测"),
+            "life" => Known("生活技能数据表", "记录采集、制造、生产或生活玩法相关数据。", "生活技能界面、材料判断和产物计算时读取。", true, "根据 MB 目录推测"),
+            "object" => Known("对象数据表", "记录客户端玩法对象或交互对象的参数。", "地图交互、NPC、机关或玩法对象需要显示和判断时读取。", true, "根据 MB 目录推测"),
+            "server" => Known("服务端同步表", "可能保存客户端与服务端共同使用的编号、规则或显示字段。", "客户端需要和服务端数据保持一致时读取。", false, "根据 MB 目录推测"),
+            "scn" => Known("场景玩法表", "记录地图、场景或区域玩法相关数据。", "地图加载、活动区域或场景交互逻辑读取。", true, "根据 MB 目录推测"),
+            _ => Known("MB 玩法数据表", "这是 mb.dpk 内的客户端表数据，通常记录玩法、数值、显示文本或编号映射。", "对应系统打开、显示或计算时读取。", true, "根据 MB 包归类")
+        };
+    }
 
     private static ResourceExplanation Known(
         string name,

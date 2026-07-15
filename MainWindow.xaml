@@ -23,7 +23,7 @@
                 <TextBlock Text="寻仙 DPK 资源浏览器"
                            Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="14" />
                 <Border Padding="7,2" CornerRadius="8" Background="{StaticResource AccentSurfaceBrush}">
-                    <TextBlock Text="v1.1" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
+                    <TextBlock Text="v2.0" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
                 </Border>
             </StackPanel>
             <TextBlock Grid.Column="2" x:Name="ArchiveSummaryText" Margin="0,0,16,0"
@@ -55,8 +55,11 @@
                 <NavigationViewItem Content="字体" Tag="font" Foreground="{StaticResource PrimaryTextBrush}">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D2;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="配置与其他" Tag="other" Foreground="{StaticResource PrimaryTextBrush}">
+                <NavigationViewItem x:Name="MbNavigationItem" Content="MB 表" Tag="mb" Foreground="{StaticResource PrimaryTextBrush}">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="DungeonNavigationItem" Content="副本怪物" Tag="dungeon" Foreground="{StaticResource PrimaryTextBrush}">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE7FC;" Foreground="{StaticResource AccentTextBrush}" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
@@ -140,10 +143,11 @@
                         <ToggleSwitch x:Name="BeginnerModeToggle"
                                       Grid.Column="2"
                                       Margin="16,0,0,0"
-                                      Header="新手说明"
-                                      IsOn="True"
-                                      OnContent="已开启"
-                                      OffContent="原始名称"
+                                      Header=""
+                                      Visibility="Collapsed"
+                                      IsOn="False"
+                                      OnContent=""
+                                      OffContent=""
                                       Toggled="BeginnerModeToggle_Toggled" />
                         <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="10">
                             <ProgressRing x:Name="BusyRing" Width="18" Height="18" IsActive="False" />
@@ -161,7 +165,7 @@
                         <Border x:Name="AssetBrowserPanel" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="10">
                             <Grid ColumnSpacing="10">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="230" />
+                                    <ColumnDefinition x:Name="FolderTreeColumn" Width="230" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
 
@@ -172,8 +176,8 @@
                                             <RowDefinition Height="*" />
                                         </Grid.RowDefinitions>
                                         <StackPanel Margin="8,6,8,8" Spacing="3">
-                                            <TextBlock Text="DPK 目录" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" />
-                                            <TextBlock Text="按包内真实路径浏览" Foreground="{StaticResource MutedTextBrush}" FontSize="10" />
+                                            <TextBlock x:Name="FolderTreeTitleText" Text="DPK 目录" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="FolderTreeHintText" Text="按包内真实路径浏览" Foreground="{StaticResource MutedTextBrush}" FontSize="10" />
                                         </StackPanel>
                                         <TreeView x:Name="FolderTree"
                                                   Grid.Row="1"
@@ -219,20 +223,20 @@
                                     </GridView.ItemsPanel>
                                     <GridView.ItemTemplate>
                                         <DataTemplate>
-                                            <Border Width="154" Height="178" Margin="4" Padding="10"
+                                            <Border Width="160" Height="196" Margin="4" Padding="10"
                                                     AutomationProperties.Name="{Binding Name}"
-                                                    Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12">
+                                                    Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="8">
                                                 <Grid>
                                                     <Grid.RowDefinitions>
-                                                        <RowDefinition Height="120" />
-                                                        <RowDefinition Height="*" />
+                                                        <RowDefinition Height="128" />
+                                                        <RowDefinition Height="48" />
                                                     </Grid.RowDefinitions>
-                                                    <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="9">
+                                                    <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="8" Height="128">
                                                         <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="8" />
                                                     </Border>
                                                     <StackPanel Grid.Row="1" Margin="1,8,1,0">
-                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource PrimaryTextBrush}" FontSize="12" />
-                                                        <TextBlock Text="{Binding ArchiveName}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource MutedTextBrush}" FontSize="10" Margin="0,3,0,0" />
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxLines="1" Foreground="{StaticResource PrimaryTextBrush}" FontSize="12" />
+                                                        <TextBlock Text="{Binding ArchiveName}" TextTrimming="CharacterEllipsis" MaxLines="1" Foreground="{StaticResource MutedTextBrush}" FontSize="10" Margin="0,3,0,0" />
                                                     </StackPanel>
                                                 </Grid>
                                             </Border>
@@ -269,6 +273,31 @@
                                     </ListView.ItemTemplate>
                                 </ListView>
 
+                                <ListView x:Name="MbAssetList"
+                                          Visibility="Collapsed"
+                                          SelectionChanged="Asset_SelectionChanged"
+                                          IsMultiSelectCheckBoxEnabled="False"
+                                          SelectionMode="Single">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid MinHeight="48" Padding="10,7" ColumnSpacing="8"
+                                                  AutomationProperties.Name="{Binding Name}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedTextBrush}" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <Border Grid.Column="1" Padding="7,2" CornerRadius="7" Background="{StaticResource SubtleSurfaceBrush}" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding ArchiveName}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="10" />
+                                                </Border>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+
                                 <StackPanel x:Name="EmptyPanel" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
                                     <FontIcon Glyph="&#xE721;" FontSize="38" Foreground="{StaticResource MutedTextBrush}" />
                                     <TextBlock Text="当前文件夹没有匹配资源" Foreground="{StaticResource SecondaryTextBrush}" />
@@ -278,7 +307,7 @@
                             </Grid>
                         </Border>
 
-                        <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="16">
+                        <Border x:Name="PreviewPanel" Grid.Column="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="16">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="*" />
@@ -310,6 +339,137 @@
                                                     Visibility="Collapsed"
                                                     HorizontalContentAlignment="Stretch"
                                                     VerticalContentAlignment="Stretch" />
+                                    <Grid x:Name="MbTableDataPanel" Visibility="Collapsed">
+                                        <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="14" Padding="16">
+                                            <Grid RowSpacing="12">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="*" />
+                                                </Grid.RowDefinitions>
+
+                                                <Grid ColumnSpacing="12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Spacing="4">
+                                                        <TextBlock x:Name="MbTableNameText" Text="选择一个 MB 表" Foreground="{StaticResource PrimaryTextBrush}" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock x:Name="MbTablePathText" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock x:Name="MbDataSummaryText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                                                        <Button x:Name="MbExportButton" Click="ExportSelectedButton_Click" IsEnabled="False" Padding="10,5">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <FontIcon Glyph="&#xE896;" FontSize="13" />
+                                                                <TextBlock Text="导出表" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <Button x:Name="MbPropertiesButton" Click="PropertiesButton_Click" IsEnabled="False" Padding="10,5">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <FontIcon Glyph="&#xE946;" FontSize="13" />
+                                                                <TextBlock Text="属性" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <Grid Grid.Row="1" ColumnSpacing="12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="1.1*" />
+                                                        <ColumnDefinition Width="0.9*" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <Border Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
+                                                        <Grid RowSpacing="8">
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="*" />
+                                                            </Grid.RowDefinitions>
+                                                            <Grid ColumnSpacing="8">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Text="记录列表" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                                <TextBlock x:Name="MbRecordCountText" Grid.Column="1" Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                                                            </Grid>
+                                                            <Grid Grid.Row="1">
+                                                                <ListView x:Name="MbRecordList"
+                                                                          SelectionMode="Single"
+                                                                          SelectionChanged="MbRecordList_SelectionChanged">
+                                                                    <ListView.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Grid MinHeight="58" Padding="8,7" ColumnSpacing="10">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="70" />
+                                                                                    <ColumnDefinition Width="*" />
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <Border Height="24" Padding="7,2" CornerRadius="7" Background="{StaticResource SubtleSurfaceBrush}" VerticalAlignment="Top">
+                                                                                    <TextBlock Text="{Binding SourceRowText}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="10" TextAlignment="Center" />
+                                                                                </Border>
+                                                                                <StackPanel Grid.Column="1" Spacing="3">
+                                                                                    <TextBlock Text="{Binding Title}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                                    <TextBlock Text="{Binding PreviewText}" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                                                                </StackPanel>
+                                                                            </Grid>
+                                                                        </DataTemplate>
+                                                                    </ListView.ItemTemplate>
+                                                                </ListView>
+                                                                <StackPanel x:Name="MbRecordEmptyPanel" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                                                                    <FontIcon Glyph="&#xE721;" FontSize="32" Foreground="{StaticResource MutedTextBrush}" />
+                                                                    <TextBlock Text="这个表没有可显示的记录" Foreground="{StaticResource SecondaryTextBrush}" />
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Border>
+
+                                                    <Border Grid.Column="1" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="12">
+                                                        <Grid RowSpacing="10">
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="*" />
+                                                            </Grid.RowDefinitions>
+                                                            <StackPanel Spacing="3">
+                                                                <TextBlock Text="字段解释" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                                <TextBlock x:Name="MbRecordTitleText" Text="选择左侧记录查看字段" Foreground="{StaticResource PrimaryTextBrush}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                                <TextBlock x:Name="MbRecordSubtitleText" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextWrapping="Wrap" />
+                                                            </StackPanel>
+                                                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                                <StackPanel Spacing="10">
+                                                                    <ListView x:Name="MbFieldList" SelectionMode="None">
+                                                                        <ListView.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <Grid Padding="0,7" ColumnSpacing="12">
+                                                                                    <Grid.ColumnDefinitions>
+                                                                                        <ColumnDefinition Width="150" />
+                                                                                        <ColumnDefinition Width="*" />
+                                                                                    </Grid.ColumnDefinitions>
+                                                                                    <StackPanel Spacing="2">
+                                                                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                                                        <TextBlock Text="{Binding IndexText}" Foreground="{StaticResource MutedTextBrush}" FontSize="10" />
+                                                                                    </StackPanel>
+                                                                                    <StackPanel Grid.Column="1" Spacing="3">
+                                                                                        <TextBlock Text="{Binding Value}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                                                                                        <TextBlock Text="{Binding Note}" Foreground="{StaticResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" />
+                                                                                    </StackPanel>
+                                                                                </Grid>
+                                                                            </DataTemplate>
+                                                                        </ListView.ItemTemplate>
+                                                                    </ListView>
+                                                                    <Border x:Name="MbRecordExtraPanel" Visibility="Collapsed" Background="{StaticResource SubtleSurfaceBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                                        <StackPanel Spacing="6">
+                                                                            <TextBlock Text="关联解析" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                                            <TextBlock x:Name="MbRecordExtraText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </StackPanel>
+                                                            </ScrollViewer>
+                                                        </Grid>
+                                                    </Border>
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
                                     <Grid x:Name="GenericPreviewPanel" Visibility="Collapsed">
                                         <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="14">
                                             <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -317,13 +477,13 @@
                                                           HorizontalScrollBarVisibility="Disabled"
                                                           HorizontalContentAlignment="Stretch"
                                                           Padding="24">
-                                                <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Center" Spacing="12">
-                                                    <Border Width="82" Height="82" CornerRadius="24" Background="{StaticResource AccentSurfaceBrush}" HorizontalAlignment="Left">
+                                                <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Spacing="12">
+                                                    <Border x:Name="GenericPreviewIconBorder" Width="82" Height="82" CornerRadius="24" Background="{StaticResource AccentSurfaceBrush}" HorizontalAlignment="Left">
                                                         <FontIcon x:Name="GenericPreviewIcon" Glyph="&#xE8A5;" FontSize="36" Foreground="{StaticResource AccentTextBrush}" />
                                                     </Border>
                                                     <TextBlock x:Name="GenericPreviewNameText" Text="选择一个资源文件" Foreground="{StaticResource PrimaryTextBrush}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
                                                     <TextBlock x:Name="GenericPreviewRawNameText" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextWrapping="Wrap" />
-                                                    <Border Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,6,0,0">
+                                                    <Border x:Name="GenericExplanationCard" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,6,0,0">
                                                         <StackPanel Spacing="10">
                                                             <TextBlock Text="它是做什么的？" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
                                                             <TextBlock x:Name="GenericPreviewPurposeText" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
@@ -334,6 +494,28 @@
                                                     </Border>
                                                     <TextBlock x:Name="GenericPreviewTechnicalText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" />
                                                     <TextBlock x:Name="GenericPreviewHintText" Text="可查看属性或导出原始文件" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                                    <Border x:Name="MbTablePreviewPanel"
+                                                            Visibility="Collapsed"
+                                                            Background="{StaticResource SurfaceRaisedBrush}"
+                                                            BorderBrush="{StaticResource AppBorderBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="12"
+                                                            Padding="14"
+                                                            Margin="0,4,0,0">
+                                                        <StackPanel Spacing="8">
+                                                            <TextBlock x:Name="MbTableTitleText" Text="表格内容" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                            <TextBlock x:Name="MbTableSummaryText" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" />
+                                                            <TextBox x:Name="MbTablePreviewBox"
+                                                                     IsReadOnly="True"
+                                                                     AcceptsReturn="True"
+                                                                     TextWrapping="NoWrap"
+                                                                     FontFamily="Consolas"
+                                                                     FontSize="11"
+                                                                     Height="560"
+                                                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                                                     ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                                                        </StackPanel>
+                                                    </Border>
                                                     <Expander x:Name="GenericTextExpander" Header="查看原始文本（高级）" Visibility="Collapsed">
                                                         <TextBox x:Name="GenericTextPreviewBox"
                                                                  IsReadOnly="True"
@@ -369,7 +551,7 @@
                                     </Border>
                                 </Grid>
 
-                                <StackPanel Grid.Row="1" Margin="2,16,2,2" Spacing="8">
+                                <StackPanel x:Name="SelectedFooterPanel" Grid.Row="1" Margin="2,16,2,2" Spacing="8">
                                     <TextBlock x:Name="SelectedNameText" Text="尚未选择资源" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="16" TextWrapping="Wrap" />
                                     <TextBlock x:Name="SelectedPathText" Text="从左侧选择图标、声音或模型" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextWrapping="Wrap" MaxHeight="48" />
                                     <TextBlock x:Name="SelectedMetadataText" Foreground="{StaticResource AccentTextBrush}" FontSize="11" TextWrapping="Wrap" />
@@ -402,7 +584,7 @@
                                         <Button x:Name="ExportModelButton" Click="ExportModelButton_Click" IsEnabled="False" Visibility="Collapsed">
                                             <StackPanel Orientation="Horizontal" Spacing="7">
                                                 <FontIcon Glyph="&#xE74C;" FontSize="14" />
-                                                <TextBlock Text="导出 OBJ 模型" />
+                                                <TextBlock x:Name="ExportModelButtonText" Text="导出 OBJ 模型" />
                                             </StackPanel>
                                         </Button>
                                         <Button x:Name="ExpandModelButton" Click="ExpandModelButton_Click" Visibility="Collapsed">
@@ -413,6 +595,179 @@
                                         </Button>
                                     </StackPanel>
                                 </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border x:Name="DungeonSummaryPanel"
+                                Grid.ColumnSpan="2"
+                                Visibility="Collapsed"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="16"
+                                Padding="16">
+                            <Grid RowSpacing="12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <Grid ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="副本怪物属性汇总" Foreground="{StaticResource PrimaryTextBrush}" FontSize="20" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="DungeonSummaryStatusText" Text="从 MB 表自动汇总怪物、头像、战斗属性、隐藏状态和掉落组" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Border Grid.Column="1" Padding="10,5" CornerRadius="8" Background="{StaticResource SubtleSurfaceBrush}" VerticalAlignment="Top">
+                                        <TextBlock x:Name="DungeonSummaryCountText" Foreground="{StaticResource AccentTextBrush}" FontSize="12" />
+                                    </Border>
+                                </Grid>
+
+                                <Grid Grid.Row="1" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="210" />
+                                        <ColumnDefinition Width="1.05*" />
+                                        <ColumnDefinition Width="1.15*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
+                                        <Grid RowSpacing="8">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="副本" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                            <ListView x:Name="DungeonList"
+                                                      Grid.Row="1"
+                                                      SelectionMode="Single"
+                                                      SelectionChanged="DungeonList_SelectionChanged">
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel MinHeight="46" Padding="8,6" Spacing="2">
+                                                            <TextBlock Text="{Binding Name}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedTextBrush}" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="1" Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
+                                        <Grid RowSpacing="8">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="DungeonMonsterListTitleText" Text="怪物" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                <TextBlock x:Name="DungeonMonsterListCountText" Grid.Column="1" Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                                            </Grid>
+                                            <ListView x:Name="DungeonMonsterList"
+                                                      Grid.Row="1"
+                                                      SelectionMode="Single"
+                                                      SelectionChanged="DungeonMonsterList_SelectionChanged">
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid MinHeight="86" Padding="8,7" ColumnSpacing="10">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="64" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <Border Width="58" Height="58" CornerRadius="8" Background="{StaticResource SubtleSurfaceBrush}" VerticalAlignment="Top">
+                                                                <Image Source="{Binding Portrait}" Stretch="UniformToFill" />
+                                                            </Border>
+                                                            <StackPanel Grid.Column="1" Spacing="5" VerticalAlignment="Center">
+                                                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                    <Border Padding="6,1" CornerRadius="6" Background="{StaticResource AccentSurfaceBrush}">
+                                                                        <TextBlock Text="{Binding KindText}" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Text="{Binding CompactStats}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="2" Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="14">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                            <StackPanel Spacing="12">
+                                                <Grid ColumnSpacing="14">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="92" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Width="86" Height="86" CornerRadius="12" Background="{StaticResource SubtleSurfaceBrush}">
+                                                        <Image x:Name="DungeonMonsterPortraitImage" Stretch="UniformToFill" />
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                                        <TextBlock x:Name="DungeonMonsterNameText" Text="选择一个怪物" Foreground="{StaticResource PrimaryTextBrush}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                        <TextBlock x:Name="DungeonMonsterMetaText" Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                                                        <TextBlock x:Name="DungeonMonsterExplainText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" Visibility="Collapsed" />
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <Border Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                    <StackPanel Spacing="8">
+                                                        <TextBlock Text="核心属性" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                        <ItemsControl x:Name="DungeonMonsterStatList">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid Padding="0,5" ColumnSpacing="12">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="130" />
+                                                                            <ColumnDefinition Width="*" />
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBlock Text="{Binding Label}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" />
+                                                                        <StackPanel Grid.Column="1" Spacing="2">
+                                                                            <TextBlock Text="{Binding Value}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                                            <TextBlock Text="{Binding Note}" Foreground="{StaticResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" Visibility="Collapsed" />
+                                                                        </StackPanel>
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <Border Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                    <StackPanel Spacing="8">
+                                                        <TextBlock Text="隐藏机制 / 状态" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                        <TextBlock x:Name="DungeonMonsterHiddenText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <Border Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                    <StackPanel Spacing="8">
+                                                        <TextBlock Text="掉落组" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold" />
+                                                        <ItemsControl x:Name="DungeonMonsterDropList">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <StackPanel Padding="0,5" Spacing="2">
+                                                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                                        <TextBlock Text="{Binding Detail}" Foreground="{StaticResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" />
+                                                                    </StackPanel>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Grid>
                             </Grid>
                         </Border>
                     </Grid>

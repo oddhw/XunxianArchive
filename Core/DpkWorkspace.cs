@@ -4,6 +4,8 @@ namespace XunxianDpkViewer.Core;
 
 public sealed class DpkWorkspace : IDisposable
 {
+    private const string MbArchiveName = "mb.dpk";
+
     private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".png", ".jpg", ".jpeg", ".dds", ".tga", ".ico"
@@ -54,12 +56,21 @@ public sealed class DpkWorkspace : IDisposable
 
         Clear();
         foreach (string archive in archives) AddArchive(archive);
+        string? clientRoot = Directory.GetParent(System.IO.Path.GetFullPath(folder).TrimEnd(
+            System.IO.Path.DirectorySeparatorChar,
+            System.IO.Path.AltDirectorySeparatorChar))?.FullName;
+        string? mbArchive = clientRoot is null ? null : System.IO.Path.Combine(clientRoot, MbArchiveName);
+        if (mbArchive is not null && File.Exists(mbArchive))
+            AddArchive(mbArchive, AssetKind.MbTable);
     }
 
     public void OpenSingleArchive(string path)
     {
         Clear();
-        AddArchive(path);
+        AssetKind? forcedKind = System.IO.Path.GetFileName(path).Equals(MbArchiveName, StringComparison.OrdinalIgnoreCase)
+            ? AssetKind.MbTable
+            : null;
+        AddArchive(path, forcedKind);
     }
 
     public byte[] Extract(AssetEntry asset) => _readers[asset.ArchivePath].Extract(asset.Entry);
@@ -81,7 +92,7 @@ public sealed class DpkWorkspace : IDisposable
         _readers[asset.ArchivePath].ExtractTo(asset.Entry, target);
     }
 
-    private void AddArchive(string path)
+    private void AddArchive(string path, AssetKind? forcedKind = null)
     {
         string fullPath = System.IO.Path.GetFullPath(path);
         if (_readers.ContainsKey(fullPath)) return;
@@ -91,7 +102,7 @@ public sealed class DpkWorkspace : IDisposable
             IReadOnlyList<DpkEntry> entries = reader.ReadEntries();
             _readers.Add(fullPath, reader);
             foreach (DpkEntry entry in entries)
-                _assets.Add(new AssetEntry(fullPath, entry, Classify(entry.Path)));
+                _assets.Add(new AssetEntry(fullPath, entry, forcedKind ?? Classify(entry.Path)));
         }
         catch
         {

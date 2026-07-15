@@ -51,25 +51,22 @@ jobs:
           "@
           Set-Content -LiteralPath .\release-notes.md -Value $notes -Encoding utf8
 
-          gh release view v1.1 --repo "${{ github.repository }}" *> $null
+          $existingReleaseJson = gh release view v1.1 --repo "${{ github.repository }}" --json assets,url 2>$null
           if ($LASTEXITCODE -eq 0) {
-            gh release delete v1.1 --repo "${{ github.repository }}" --cleanup-tag --yes
+            $release = $existingReleaseJson | ConvertFrom-Json
+            Write-Host "v1.1 already exists: $($release.url)"
+          } else {
+            gh release create v1.1 "$asset#XunxianDpkViewer.exe" `
+              --repo "${{ github.repository }}" `
+              --target "${{ github.sha }}" `
+              --title "寻仙 DPK 资源浏览器 1.1" `
+              --notes-file .\release-notes.md
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create v1.1 release." }
+
+            $release = gh release view v1.1 --repo "${{ github.repository }}" --json assets,url | ConvertFrom-Json
           }
 
-          gh release create v1.1 "$asset#XunxianDpkViewer.exe" `
-            --repo "${{ github.repository }}" `
-            --target "${{ github.sha }}" `
-            --title "寻仙 DPK 资源浏览器 1.1" `
-            --notes-file .\release-notes.md
-          if ($LASTEXITCODE -ne 0) { throw "Failed to create v1.1 release." }
-
-          $release = gh release view v1.1 --repo "${{ github.repository }}" --json assets,url | ConvertFrom-Json
           if ($release.assets.Count -ne 1 -or $release.assets[0].name -ne "XunxianDpkViewer.exe") {
             throw "v1.1 release asset verification failed. Old releases were kept."
           }
           Write-Host "Verified v1.1: $($release.url)"
-
-          foreach ($oldTag in @("v1.0", "v0.1.0", "v0.2.0", "v0.3.0", "v0.4.0")) {
-            gh release delete $oldTag --repo "${{ github.repository }}" --cleanup-tag --yes
-            if ($LASTEXITCODE -ne 0) { Write-Warning "Could not delete $oldTag; continuing." }
-          }

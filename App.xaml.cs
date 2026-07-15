@@ -1,10 +1,12 @@
 using Microsoft.UI.Xaml;
+using System.Diagnostics;
 using XunxianDpkViewer.Core;
 
 namespace XunxianDpkViewer;
 
 public partial class App : Application
 {
+    private const string CanonicalExecutableName = "XunxianDpkViewer.exe";
     private Window? _window;
 
     public App()
@@ -21,7 +23,8 @@ public partial class App : Application
     {
         try
         {
-            if (Environment.GetCommandLineArgs().Any(argument => argument.Equals("--self-test", StringComparison.OrdinalIgnoreCase)))
+            string[] commandLineArgs = Environment.GetCommandLineArgs();
+            if (commandLineArgs.Any(argument => argument.Equals("--self-test", StringComparison.OrdinalIgnoreCase)))
             {
                 string folder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -31,6 +34,12 @@ public partial class App : Application
                 Exit();
                 return;
             }
+            if (TryRelaunchWithCanonicalExecutableName(commandLineArgs))
+            {
+                Exit();
+                return;
+            }
+
             _window = new MainWindow();
             _window.Activate();
         }
@@ -39,6 +48,40 @@ public partial class App : Application
             WriteCrashLog(exception);
             throw;
         }
+    }
+
+    private static bool TryRelaunchWithCanonicalExecutableName(IReadOnlyList<string> commandLineArgs)
+    {
+        string? processPath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(processPath)) return false;
+        if (Path.GetFileName(processPath).Equals(CanonicalExecutableName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string launcherFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "XunxianDpkViewer", "launcher");
+        string canonicalPath = Path.Combine(launcherFolder, CanonicalExecutableName);
+
+        try
+        {
+            Directory.CreateDirectory(launcherFolder);
+            File.Copy(processPath, canonicalPath, overwrite: true);
+        }
+        catch
+        {
+            if (!File.Exists(canonicalPath)) return false;
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = canonicalPath,
+            WorkingDirectory = Directory.GetCurrentDirectory(),
+            UseShellExecute = false
+        };
+        foreach (string argument in commandLineArgs.Skip(1))
+            startInfo.ArgumentList.Add(argument);
+        Process.Start(startInfo);
+        return true;
     }
 
     private static void WriteCrashLog(Exception exception)

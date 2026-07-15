@@ -60,6 +60,7 @@ public static class SelfTest
         CheckCompositeModel(report, root, "cha.dpk", "special/gw_hlnubing_187");
         CheckCompositeModel(report, root, "cha.dpk", "special/zj_tuzinv_042", maximumParts: 64);
         CheckCompositeModel(report, root, "cha.dpk", "special/zj_waiguonan_025", maximumParts: 64);
+        CheckCompositeObjExport(report, root, "cha.dpk", "special/gw_errenzhuanmao_1692", minimumParts: 3);
         CheckCompleteClientIndex(report, root);
         report.AppendLine("SELF-TEST PASSED");
         return report.ToString();
@@ -97,6 +98,63 @@ public static class SelfTest
         foreach (CompositeModelPart part in composite.Parts)
             _ = PmfParser.Parse(workspace.Extract(part.MeshAsset));
         report.AppendLine($"{archiveName} 组合模型: {composite.Name}；{composite.Parts.Count:N0} 个部件；{texturedParts:N0} 个贴图材质");
+    }
+
+    private static void CheckCompositeObjExport(
+        StringBuilder report,
+        string root,
+        string archiveName,
+        string folderPath,
+        int minimumParts)
+    {
+        using var workspace = new DpkWorkspace();
+        workspace.OpenSingleArchive(Path.Combine(root, archiveName));
+        CompositeModelEntry? composite = workspace.FindCompositeModels(workspace.ArchivePaths.Single(), folderPath)
+            .FirstOrDefault();
+        if (composite is null)
+        {
+            report.AppendLine($"{archiveName} 组合 OBJ 导出: {folderPath} 未找到，跳过兼容性检查");
+            return;
+        }
+
+        if (composite.Parts.Count < minimumParts)
+            throw new InvalidDataException(
+                $"{folderPath} 组合部件过少：{composite.Parts.Count:N0} / {minimumParts:N0}。");
+
+        ObjExporter.ObjPart[] parts = composite.Parts
+            .Select((part, index) => new ObjExporter.ObjPart(
+                $"{index + 1:000}_{Path.GetFileNameWithoutExtension(part.MeshAsset.Name)}",
+                PmfParser.Parse(workspace.Extract(part.MeshAsset)),
+                string.IsNullOrWhiteSpace(part.MaterialName)
+                    ? Path.GetFileNameWithoutExtension(part.MeshAsset.Name)
+                    : part.MaterialName,
+                part.TextureBinding?.TextureAsset.Name))
+            .ToArray();
+        long compositeTriangles = parts.Sum(part => (long)part.Mesh.DeclaredTriangleCount);
+        long largestSinglePart = parts.Max(part => (long)part.Mesh.DeclaredTriangleCount);
+        if (compositeTriangles <= largestSinglePart)
+            throw new InvalidDataException(
+                $"{folderPath} 组合 OBJ 面数没有超过单个 PMF：组合 {compositeTriangles:N0}，单件最大 {largestSinglePart:N0}。");
+
+        string target = Path.Combine(Path.GetTempPath(), "xunxian-dpk-composite-self-test.obj");
+        string material = Path.ChangeExtension(target, ".mtl");
+        try
+        {
+            ObjExporter.Export(parts, target, composite.Name);
+            if (!File.Exists(target) || new FileInfo(target).Length == 0)
+                throw new InvalidDataException("组合 OBJ 导出结果为空。");
+            int exportedFaces = File.ReadLines(target).Count(line => line.StartsWith("f ", StringComparison.Ordinal));
+            if (exportedFaces <= largestSinglePart)
+                throw new InvalidDataException(
+                    $"{folderPath} 组合 OBJ 导出的面数仍像单部件：{exportedFaces:N0} / {compositeTriangles:N0}。");
+        }
+        finally
+        {
+            File.Delete(target);
+            File.Delete(material);
+        }
+
+        report.AppendLine($"{archiveName} 组合 OBJ 导出: {composite.Name}；{parts.Length:N0} 个部件；{compositeTriangles:N0} 三角面");
     }
 
     private static void CheckModelTexture(
@@ -163,6 +221,18 @@ public static class SelfTest
         int fonts = workspace.Assets.Count(asset => asset.Kind == AssetKind.Font);
         if (fonts != 3)
             throw new InvalidDataException($"font.dpk 应包含 3 个字体，实际识别到 {fonts} 个。");
+        string? clientRoot = Directory.GetParent(root)?.FullName;
+        if (clientRoot is not null && File.Exists(Path.Combine(clientRoot, "mb.dpk")))
+        {
+            AssetEntry[] mbTables = workspace.Assets
+                .Where(asset => asset.Kind == AssetKind.MbTable)
+                .ToArray();
+            if (mbTables.Length == 0)
+                throw new InvalidDataException("已发现 mb.dpk，但没有加载到 MB 表菜单。");
+            if (mbTables.Any(asset => !asset.ArchiveName.Equals("mb.dpk", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("MB 表菜单混入了非 mb.dpk 资源。");
+            report.AppendLine($"MB 表索引: {mbTables.Length:N0} 个表资源；示例 {mbTables[0].Entry.Path}");
+        }
         AssetEntry grass = workspace.Assets.First(asset =>
             asset.ArchiveName.Equals("scn.dpk", StringComparison.OrdinalIgnoreCase) &&
             asset.Name.Equals("grass.byte", StringComparison.OrdinalIgnoreCase));
