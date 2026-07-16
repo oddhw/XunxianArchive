@@ -21,7 +21,7 @@ namespace XunxianDpkViewer;
 
 public sealed partial class MainWindow : Window
 {
-    private const string AppVersion = "2.0";
+    private const string AppVersion = "2.1";
     private const string AppAuthor = "黑风岭-梵心似火";
     private readonly DpkWorkspace _workspace = new();
     private List<AssetItemViewModel> _items = new();
@@ -342,13 +342,6 @@ public sealed partial class MainWindow : Window
             AssetKind.Other => "gfx.dpk",
             _ => string.Empty
         };
-        string preferredPath = _currentKind switch
-        {
-            AssetKind.Image => "icon",
-            AssetKind.Model => "share/mesh",
-            AssetKind.MbTable => string.Empty,
-            _ => string.Empty
-        };
         foreach (IGrouping<string, AssetEntry> archive in _workspace.Assets
                      .Where(asset => asset.Kind == _currentKind)
                      .GroupBy(asset => asset.ArchivePath, StringComparer.OrdinalIgnoreCase)
@@ -362,10 +355,12 @@ public sealed partial class MainWindow : Window
             var root = new TreeViewNode
             {
                 Content = new FolderNodeInfo(archiveDisplayName, archive.Key, string.Empty),
-                IsExpanded = true
+                IsExpanded = false
             };
             FolderTree.RootNodes.Add(root);
             firstRoot ??= root;
+            if (string.Equals(archiveName, preferredArchive, StringComparison.OrdinalIgnoreCase))
+                preferredNode ??= root;
 
             var nodesByPath = new Dictionary<string, TreeViewNode>(StringComparer.OrdinalIgnoreCase)
             {
@@ -403,14 +398,6 @@ public sealed partial class MainWindow : Window
                 nodesByPath[directory] = node;
             }
 
-            if (string.Equals(archiveName, preferredArchive, StringComparison.OrdinalIgnoreCase) &&
-                nodesByPath.TryGetValue(preferredPath, out TreeViewNode? categoryDefault))
-            {
-                preferredNode = categoryDefault;
-                categoryDefault.IsExpanded = true;
-                for (TreeViewNode? ancestor = categoryDefault.Parent; ancestor is not null; ancestor = ancestor.Parent)
-                    ancestor.IsExpanded = true;
-            }
         }
 
         TreeViewNode? initialNode = preferredNode ?? firstRoot;

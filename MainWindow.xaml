@@ -23,7 +23,7 @@
                 <TextBlock Text="寻仙 DPK 资源浏览器"
                            Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" FontSize="14" />
                 <Border Padding="7,2" CornerRadius="8" Background="{StaticResource AccentSurfaceBrush}">
-                    <TextBlock Text="v2.0" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
+                    <TextBlock Text="v2.1" Foreground="{StaticResource AccentTextBrush}" FontSize="10" />
                 </Border>
             </StackPanel>
             <TextBlock Grid.Column="2" x:Name="ArchiveSummaryText" Margin="0,0,16,0"

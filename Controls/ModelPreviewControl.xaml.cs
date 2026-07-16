@@ -16,19 +16,36 @@ public enum ModelRenderMode
     Wireframe
 }
 
+internal enum TextureAlphaMode
+{
+    Opaque,
+    Straight,
+    Inverted
+}
+
+internal enum TextureColorKeyMode
+{
+    None,
+    DarkOnly,
+    Chroma
+}
+
 public sealed partial class ModelPreviewControl : UserControl
 {
-    private const int MaximumRasterDimension = 900;
+    private const int MaximumRasterDimension = 1400;
     private const int MaximumRenderedTriangles = 120_000;
     private const byte BackgroundBlue = 32;
     private const byte BackgroundGreen = 21;
     private const byte BackgroundRed = 13;
+    private const float DefaultYaw = 2.59f;
+    private const float DefaultPitch = 0.18f;
+    private const float DefaultZoom = 0.86f;
     private IReadOnlyList<ModelRenderPart> _parts = Array.Empty<ModelRenderPart>();
     private string _modelName = string.Empty;
     private ModelRenderMode _mode = ModelRenderMode.Solid;
-    private float _yaw = -0.55f;
-    private float _pitch = 0.28f;
-    private float _zoom = 0.86f;
+    private float _yaw = DefaultYaw;
+    private float _pitch = DefaultPitch;
+    private float _zoom = DefaultZoom;
     private Windows.Foundation.Point _lastPointer;
     private uint? _capturedPointerId;
     private bool _renderQueued;
@@ -44,9 +61,7 @@ public sealed partial class ModelPreviewControl : UserControl
             ? Array.Empty<ModelRenderPart>()
             : new[] { new ModelRenderPart(string.Empty, mesh, null, string.Empty) };
         _modelName = string.Empty;
-        _yaw = -0.55f;
-        _pitch = 0.28f;
-        _zoom = 0.86f;
+        ResetCamera();
         TextureModeButton.IsEnabled = false;
         SetMode(ModelRenderMode.Solid);
         EmptyText.Visibility = mesh is null ? Visibility.Visible : Visibility.Collapsed;
@@ -58,11 +73,9 @@ public sealed partial class ModelPreviewControl : UserControl
     {
         _parts = parts;
         _modelName = modelName;
-        _yaw = -0.55f;
-        _pitch = 0.28f;
-        _zoom = 0.86f;
+        ResetCamera();
         TextureModeButton.IsEnabled = parts.Any(part => part.Texture is not null);
-        SetMode(ModelRenderMode.Solid);
+        SetMode(TextureModeButton.IsEnabled ? ModelRenderMode.Textured : ModelRenderMode.Solid);
         EmptyText.Visibility = parts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateHint();
         ScheduleRender();
@@ -89,6 +102,13 @@ public sealed partial class ModelPreviewControl : UserControl
         WireframeModeButton.IsChecked = mode == ModelRenderMode.Wireframe;
         UpdateHint();
         ScheduleRender();
+    }
+
+    private void ResetCamera()
+    {
+        _yaw = DefaultYaw;
+        _pitch = DefaultPitch;
+        _zoom = DefaultZoom;
     }
 
     private void UpdateHint()
@@ -158,10 +178,7 @@ public sealed partial class ModelPreviewControl : UserControl
     private byte[] RenderPixels(IReadOnlyList<ModelRenderPart> parts, ModelRenderMode mode, int width, int height)
     {
         if (mode == ModelRenderMode.Textured)
-        {
-            byte[] solidBase = RenderPixelsCore(parts, ModelRenderMode.Solid, width, height, null, false);
-            return RenderPixelsCore(parts, ModelRenderMode.Textured, width, height, solidBase, true);
-        }
+            return RenderPixelsCore(parts, ModelRenderMode.Textured, width, height, null, false);
 
         return RenderPixelsCore(parts, mode, width, height, null, false);
     }
@@ -241,6 +258,12 @@ public sealed partial class ModelPreviewControl : UserControl
             }
 
             bool useTexture = mode == ModelRenderMode.Textured && part.Texture is not null && mesh.TextureCoordinates.Count == source.Count;
+            TextureAlphaMode textureAlphaMode = useTexture && part.Texture is not null
+                ? DetectTextureAlphaMode(mesh, part.Texture)
+                : TextureAlphaMode.Opaque;
+            TextureColorKeyMode colorKeyMode = useTexture && textureAlphaMode == TextureAlphaMode.Opaque
+                ? GetTextureColorKeyMode(part)
+                : TextureColorKeyMode.None;
             for (int offset = 0; offset + 2 < indices.Count; offset += 3)
             {
                 if (renderedTriangles++ >= MaximumRenderedTriangles) return pixels;
@@ -249,11 +272,14 @@ public sealed partial class ModelPreviewControl : UserControl
                 int ic = indices[offset + 2];
                 Vector3 normal = Vector3.Cross(transformed[ib] - transformed[ia], transformed[ic] - transformed[ia]);
                 float normalLengthSquared = normal.LengthSquared();
-                float brightness = 0.78f;
+                float brightness = mode == ModelRenderMode.Textured ? 1f : 0.78f;
                 if (normalLengthSquared > 1e-20f)
                 {
                     normal = Vector3.Normalize(normal);
-                    brightness = 0.28f + 0.72f * MathF.Abs(Vector3.Dot(normal, light));
+                    float lightAmount = MathF.Abs(Vector3.Dot(normal, light));
+                    brightness = mode == ModelRenderMode.Textured
+                        ? 0.98f + 0.02f * lightAmount
+                        : 0.28f + 0.72f * lightAmount;
                 }
                 RasterizeTriangle(
                     pixels, depthBuffer!, width, height,
@@ -263,6 +289,8 @@ public sealed partial class ModelPreviewControl : UserControl
                     useTexture ? mesh.TextureCoordinates[ib] : default,
                     useTexture ? mesh.TextureCoordinates[ic] : default,
                     useTexture ? part.Texture : null,
+                    textureAlphaMode,
+                    colorKeyMode,
                     brightness,
                     preserveLowContrastTexture);
             }
@@ -285,6 +313,8 @@ public sealed partial class ModelPreviewControl : UserControl
         Vector2 uvb,
         Vector2 uvc,
         DecodedTexture? texture,
+        TextureAlphaMode textureAlphaMode,
+        TextureColorKeyMode colorKeyMode,
         float brightness,
         bool preserveLowContrastTexture)
     {
@@ -320,13 +350,13 @@ public sealed partial class ModelPreviewControl : UserControl
                     Vector2 uv = wa * uva + wb * uvb + wc * uvc;
                     float wrappedU = uv.X - MathF.Floor(uv.X);
                     float wrappedV = uv.Y - MathF.Floor(uv.Y);
-                    int textureX = Math.Clamp((int)(wrappedU * texture.Width), 0, texture.Width - 1);
-                    int textureY = Math.Clamp((int)(wrappedV * texture.Height), 0, texture.Height - 1);
-                    int textureOffset = (textureY * texture.Width + textureX) * 4;
-                    blue = (byte)(texture.BgraPixels[textureOffset] * brightness);
-                    green = (byte)(texture.BgraPixels[textureOffset + 1] * brightness);
-                    red = (byte)(texture.BgraPixels[textureOffset + 2] * brightness);
-                    alpha = texture.BgraPixels[textureOffset + 3];
+                    SampleTextureBilinear(texture, wrappedU, wrappedV, out blue, out green, out red, out alpha);
+                    if (IsTextureColorKey(blue, green, red, colorKeyMode))
+                        continue;
+                    blue = ApplyBrightness(blue, brightness);
+                    green = ApplyBrightness(green, brightness);
+                    red = ApplyBrightness(red, brightness);
+                    alpha = ApplyTextureAlphaMode(alpha, textureAlphaMode);
                     if (alpha < 8) continue;
                     if (preserveLowContrastTexture && GetBackgroundContrast(blue, green, red) < 36)
                         continue;
@@ -357,6 +387,186 @@ public sealed partial class ModelPreviewControl : UserControl
         }
     }
 
+
+    private static void SampleTextureBilinear(
+        DecodedTexture texture,
+        float wrappedU,
+        float wrappedV,
+        out byte blue,
+        out byte green,
+        out byte red,
+        out byte alpha)
+    {
+        float textureX = wrappedU * Math.Max(0, texture.Width - 1);
+        float textureY = wrappedV * Math.Max(0, texture.Height - 1);
+        int x0 = Math.Clamp((int)MathF.Floor(textureX), 0, texture.Width - 1);
+        int y0 = Math.Clamp((int)MathF.Floor(textureY), 0, texture.Height - 1);
+        int x1 = Math.Min(texture.Width - 1, x0 + 1);
+        int y1 = Math.Min(texture.Height - 1, y0 + 1);
+        float tx = textureX - x0;
+        float ty = textureY - y0;
+
+        int o00 = (y0 * texture.Width + x0) * 4;
+        int o10 = (y0 * texture.Width + x1) * 4;
+        int o01 = (y1 * texture.Width + x0) * 4;
+        int o11 = (y1 * texture.Width + x1) * 4;
+
+        blue = InterpolateTextureChannel(texture.BgraPixels[o00], texture.BgraPixels[o10], texture.BgraPixels[o01], texture.BgraPixels[o11], tx, ty);
+        green = InterpolateTextureChannel(texture.BgraPixels[o00 + 1], texture.BgraPixels[o10 + 1], texture.BgraPixels[o01 + 1], texture.BgraPixels[o11 + 1], tx, ty);
+        red = InterpolateTextureChannel(texture.BgraPixels[o00 + 2], texture.BgraPixels[o10 + 2], texture.BgraPixels[o01 + 2], texture.BgraPixels[o11 + 2], tx, ty);
+        alpha = InterpolateTextureChannel(texture.BgraPixels[o00 + 3], texture.BgraPixels[o10 + 3], texture.BgraPixels[o01 + 3], texture.BgraPixels[o11 + 3], tx, ty);
+    }
+
+    private static byte InterpolateTextureChannel(byte topLeft, byte topRight, byte bottomLeft, byte bottomRight, float tx, float ty)
+    {
+        float top = topLeft + (topRight - topLeft) * tx;
+        float bottom = bottomLeft + (bottomRight - bottomLeft) * tx;
+        return ClampToByte(top + (bottom - top) * ty);
+    }
+
+    private static byte ApplyBrightness(byte value, float brightness) =>
+        ClampToByte(value * brightness);
+
+    private static byte ClampToByte(float value) =>
+        (byte)Math.Clamp((int)MathF.Round(value), 0, 255);
+
+    private static TextureColorKeyMode GetTextureColorKeyMode(ModelRenderPart part)
+    {
+        string name = $"{part.Name} {part.TextureName}".ToLowerInvariant();
+        if (name.Contains("qz_") ||
+            name.Contains("xw_") ||
+            name.Contains("sy_"))
+            return TextureColorKeyMode.Chroma;
+
+        if (name.Contains("mza_") ||
+            name.Contains("mzb_") ||
+            name.Contains("mzc_"))
+            return TextureColorKeyMode.DarkOnly;
+
+        return TextureColorKeyMode.None;
+    }
+
+    private static bool IsTextureColorKey(byte blue, byte green, byte red, TextureColorKeyMode mode)
+    {
+        if (mode == TextureColorKeyMode.None) return false;
+
+        int maximum = Math.Max(red, Math.Max(green, blue));
+        int minimum = Math.Min(red, Math.Min(green, blue));
+
+        if (maximum <= 12 && maximum - minimum <= 5)
+            return true;
+
+        if (mode == TextureColorKeyMode.DarkOnly) return false;
+
+        bool chromaBlue = blue >= 120 &&
+                          red <= 90 &&
+                          blue >= green + 28 &&
+                          blue >= red + 55;
+        if (chromaBlue)
+            return true;
+
+        bool chromaCyan = blue >= 105 &&
+                          green >= 95 &&
+                          red <= 70 &&
+                          Math.Abs(blue - green) <= 80;
+        return chromaCyan;
+    }
+
+    private static byte ApplyTextureAlphaMode(byte alpha, TextureAlphaMode mode) => mode switch
+    {
+        TextureAlphaMode.Inverted => (byte)(255 - alpha),
+        TextureAlphaMode.Opaque => 255,
+        _ => alpha
+    };
+
+    private static TextureAlphaMode DetectTextureAlphaMode(PmfMesh mesh, DecodedTexture texture)
+    {
+        if (mesh.TextureCoordinates.Count != mesh.Vertices.Count || mesh.Indices.Count < 3)
+            return TextureAlphaMode.Opaque;
+
+        int triangleCount = mesh.Indices.Count / 3;
+        int stride = Math.Max(1, triangleCount / 4096);
+        int samples = 0;
+        int low = 0;
+        int middle = 0;
+        int high = 0;
+        long lowSignal = 0;
+        long highSignal = 0;
+
+        for (int triangle = 0; triangle < triangleCount; triangle += stride)
+        {
+            int offset = triangle * 3;
+            if (offset + 2 >= mesh.Indices.Count) break;
+            Vector2 uva = mesh.TextureCoordinates[mesh.Indices[offset]];
+            Vector2 uvb = mesh.TextureCoordinates[mesh.Indices[offset + 1]];
+            Vector2 uvc = mesh.TextureCoordinates[mesh.Indices[offset + 2]];
+            AccumulateTextureAlphaSample(texture, uva, ref samples, ref low, ref middle, ref high, ref lowSignal, ref highSignal);
+            AccumulateTextureAlphaSample(texture, uvb, ref samples, ref low, ref middle, ref high, ref lowSignal, ref highSignal);
+            AccumulateTextureAlphaSample(texture, uvc, ref samples, ref low, ref middle, ref high, ref lowSignal, ref highSignal);
+            AccumulateTextureAlphaSample(texture, (uva + uvb + uvc) / 3f, ref samples, ref low, ref middle, ref high, ref lowSignal, ref highSignal);
+        }
+
+        if (samples == 0) return TextureAlphaMode.Opaque;
+        if (low == 0 && middle == 0) return TextureAlphaMode.Opaque;
+        if (high == 0 && middle == 0) return TextureAlphaMode.Inverted;
+        if (middle > samples / 4) return TextureAlphaMode.Opaque;
+
+        double lowRatio = low / (double)samples;
+        double highRatio = high / (double)samples;
+        double lowAverageSignal = low == 0 ? 0 : lowSignal / (double)low;
+        double highAverageSignal = high == 0 ? 0 : highSignal / (double)high;
+
+        if (lowRatio > 0.18 && low > high * 3 / 2 && lowAverageSignal > highAverageSignal + 10)
+            return TextureAlphaMode.Inverted;
+        if (highRatio > 0.18 && high > low * 3 / 2)
+            return TextureAlphaMode.Straight;
+        return TextureAlphaMode.Opaque;
+    }
+
+    private static void AccumulateTextureAlphaSample(
+        DecodedTexture texture,
+        Vector2 uv,
+        ref int samples,
+        ref int low,
+        ref int middle,
+        ref int high,
+        ref long lowSignal,
+        ref long highSignal)
+    {
+        float wrappedU = uv.X - MathF.Floor(uv.X);
+        float wrappedV = uv.Y - MathF.Floor(uv.Y);
+        int textureX = Math.Clamp((int)(wrappedU * texture.Width), 0, texture.Width - 1);
+        int textureY = Math.Clamp((int)(wrappedV * texture.Height), 0, texture.Height - 1);
+        int textureOffset = (textureY * texture.Width + textureX) * 4;
+        byte alpha = texture.BgraPixels[textureOffset + 3];
+        int signal = GetColorSignal(
+            texture.BgraPixels[textureOffset],
+            texture.BgraPixels[textureOffset + 1],
+            texture.BgraPixels[textureOffset + 2]);
+
+        samples++;
+        if (alpha <= 24)
+        {
+            low++;
+            lowSignal += signal;
+        }
+        else if (alpha >= 231)
+        {
+            high++;
+            highSignal += signal;
+        }
+        else
+        {
+            middle++;
+        }
+    }
+
+    private static int GetColorSignal(byte blue, byte green, byte red)
+    {
+        int maximum = Math.Max(red, Math.Max(green, blue));
+        int minimum = Math.Min(red, Math.Min(green, blue));
+        return maximum - minimum + maximum / 4;
+    }
     private static float Edge(Vector2 a, Vector2 b, Vector2 point) =>
         (point.X - a.X) * (b.Y - a.Y) - (point.Y - a.Y) * (b.X - a.X);
 

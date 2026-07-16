@@ -7,6 +7,8 @@ namespace XunxianDpkViewer.Core;
 public sealed class ModelTextureResolver
 {
     private const int MaximumCompositeParts = 64;
+    private const int MaximumCharacterCompositeParts = 40;
+    private const int MaximumCharacterFallbackParts = 24;
 
     private readonly DpkWorkspace _workspace;
     private readonly Dictionary<string, IReadOnlyList<ModelTextureBinding>> _cache = new(StringComparer.OrdinalIgnoreCase);
@@ -19,6 +21,14 @@ public sealed class ModelTextureResolver
         string MaterialName,
         XElement SourceElement,
         bool UsesMaterialReferences);
+
+    private sealed record CompositeCandidateSet(
+        string Label,
+        CompositePartCandidate[] Candidates);
+
+    private sealed record NonCharacterVariantKey(
+        string Family,
+        string Code);
 
     public ModelTextureResolver(DpkWorkspace workspace)
     {
@@ -99,22 +109,30 @@ public sealed class ModelTextureResolver
                 candidates.Add(new CompositePartCandidate(mesh, string.Empty, meshElement.Parent, UsesMaterialReferences: false));
             }
 
-            CompositePartCandidate[] selectedCandidates = SelectCompositeCandidates(
-                candidates
-                    .DistinctBy(part => $"{part.MeshAsset.DisplayPath}|{part.MaterialName}", StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
-                config);
-            if (selectedCandidates.Length < 2) continue;
-
-            CompositeModelPart[] distinctParts = selectedCandidates
-                .Select(candidate => new CompositeModelPart(
-                    candidate.MeshAsset,
-                    candidate.MaterialName,
-                    ResolveCompositeTexture(candidate, materialReferences, config.Entry.Path)))
-                .ToArray();
-            if (distinctParts.Length < 2) continue;
             string name = System.IO.Path.GetFileNameWithoutExtension(config.Name) + "（完整组合）";
-            result.Add(new CompositeModelEntry(name, config, distinctParts));
+            CompositePartCandidate[] distinctCandidates = candidates
+                .DistinctBy(part => $"{part.MeshAsset.DisplayPath}|{part.MaterialName}", StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            foreach (CompositeCandidateSet candidateSet in SelectCompositeCandidateSets(distinctCandidates, config))
+            {
+                bool isLabeledVariant = !string.IsNullOrWhiteSpace(candidateSet.Label);
+                if (candidateSet.Candidates.Length < 2 && !isLabeledVariant) continue;
+
+                CompositeModelPart[] distinctParts = candidateSet.Candidates
+                    .Select(candidate => new CompositeModelPart(
+                        candidate.MeshAsset,
+                        candidate.MaterialName,
+                        ResolveCompositeTexture(candidate, materialReferences, config.Entry.Path)))
+                    .ToArray();
+                if (distinctParts.Length < 2 && !isLabeledVariant) continue;
+
+                string displayName = string.IsNullOrWhiteSpace(candidateSet.Label)
+                    ? name
+                    : candidateSet.Candidates.Length == 1
+                        ? $"{System.IO.Path.GetFileNameWithoutExtension(config.Name)}（独立模型 {candidateSet.Label}）"
+                        : $"{System.IO.Path.GetFileNameWithoutExtension(config.Name)}（完整组合 {candidateSet.Label}）";
+                result.Add(new CompositeModelEntry(displayName, config, distinctParts));
+            }
         }
         return result.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
@@ -216,16 +234,552 @@ public sealed class ModelTextureResolver
         string? root = GetConfigRoot(config.Entry.Path);
         CompositePartCandidate[] selected = candidates.ToArray();
 
-        if (selected.Length > MaximumCompositeParts && root is not null)
+        if (root is null) return selected;
+        string configRoot = root;
+        bool isCharacterConfig = IsCharacterConfig(config.Entry.Path);
+
+        CompositePartCandidate[] local = selected
+            .Where(candidate => IsUnderRoot(candidate.MeshAsset.Entry.Path, configRoot))
+            .ToArray();
+
+        if (selected.Length > MaximumCompositeParts)
         {
-            CompositePartCandidate[] local = selected
-                .Where(candidate => IsUnderRoot(candidate.MeshAsset.Entry.Path, root))
-                .ToArray();
-            if (local.Length is >= 2 and <= MaximumCompositeParts) selected = local;
+            if (!isCharacterConfig && local.Length >= 2) selected = local;
+            else if (isCharacterConfig) selected = candidates.ToArray();
             else return Array.Empty<CompositePartCandidate>();
         }
 
-        return root is null ? selected : CollapseMaterialVariants(selected, config.ArchivePath, root);
+        selected = CollapseMaterialVariants(selected, config.ArchivePath, configRoot);
+        if (!isCharacterConfig && !IsLikelyCharacterWardrobeComposite(selected)) return selected;
+
+        HashSet<string> localMaterialNames = GetLocalMaterialNames(config.ArchivePath, configRoot);
+        CompositePartCandidate[] characterSource = selected;
+        if (isCharacterConfig)
+        {
+            CompositePartCandidate[] defaultBody = SelectDefaultCharacterBodyCandidates(characterSource, localMaterialNames);
+            CompositePartCandidate[] defaultFilled = FillMissingCharacterBodySlots(
+                defaultBody,
+                characterSource,
+                localMaterialNames,
+                preferDefaultBase: true);
+            if (IsCompleteCharacterBody(defaultFilled)) return defaultFilled;
+        }
+
+        CompositePartCandidate[] materialMatched = SelectLocalMaterialCandidates(
+            local.Length > 0 ? local : candidates,
+            config.ArchivePath,
+            configRoot);
+        if (materialMatched.Length >= 2)
+        {
+            CompositePartCandidate[] body = SelectCharacterBodyCandidates(
+                CollapseMaterialVariants(materialMatched, config.ArchivePath, configRoot),
+                config.ArchivePath,
+                configRoot,
+                includeAccessoryFallback: false);
+            CompositePartCandidate[] filled = FillMissingCharacterBodySlots(body, selected, localMaterialNames);
+            if (filled.Length >= 2) return filled;
+            return body.Length >= 2 ? body : CollapseMaterialVariants(materialMatched, config.ArchivePath, configRoot);
+        }
+
+        if (selected.Length <= MaximumCharacterCompositeParts && !IsLikelyCharacterWardrobeComposite(selected))
+            return selected;
+
+        CompositePartCandidate[] reduced = SelectCharacterBodyCandidates(
+            selected,
+            config.ArchivePath,
+            configRoot,
+            includeAccessoryFallback: true);
+        reduced = FillMissingCharacterBodySlots(reduced, selected, localMaterialNames);
+        return reduced.Length >= 2 ? reduced : Array.Empty<CompositePartCandidate>();
+    }
+
+    private IReadOnlyList<CompositeCandidateSet> SelectCompositeCandidateSets(
+        IReadOnlyList<CompositePartCandidate> candidates,
+        AssetEntry config)
+    {
+        CompositePartCandidate[] selected = SelectCompositeCandidates(candidates, config);
+        if (selected.Length < 2)
+            return Array.Empty<CompositeCandidateSet>();
+
+        if (IsCharacterConfig(config.Entry.Path))
+            return new[] { new CompositeCandidateSet(string.Empty, selected) };
+
+        CompositeCandidateSet[] splitVariants = SplitNonCharacterVariantComposite(selected);
+        return splitVariants.Length > 1
+            ? splitVariants
+            : new[] { new CompositeCandidateSet(string.Empty, selected) };
+    }
+
+    private static CompositeCandidateSet[] SplitNonCharacterVariantComposite(
+        IReadOnlyList<CompositePartCandidate> candidates)
+    {
+        var parsed = candidates
+            .Select(candidate => (Candidate: candidate, Variant: GetNonCharacterVariantKey(candidate)))
+            .ToArray();
+
+        Dictionary<string, HashSet<string>> variantFamilies = parsed
+            .Where(item => item.Variant is not null)
+            .GroupBy(item => item.Variant!.Family, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                Family = group.Key,
+                Codes = group
+                    .Select(item => item.Variant!.Code)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            })
+            .Where(group => group.Codes.Count > 1)
+            .ToDictionary(group => group.Family, group => group.Codes, StringComparer.OrdinalIgnoreCase);
+
+        if (variantFamilies.Count == 0) return Array.Empty<CompositeCandidateSet>();
+
+        string[] variantCodes = variantFamilies.Values
+            .SelectMany(codes => codes)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(code => int.TryParse(code, out int number) ? number : int.MaxValue)
+            .ThenBy(code => code, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (variantCodes.Length < 2 || variantCodes.Length > 12)
+            return Array.Empty<CompositeCandidateSet>();
+
+        Dictionary<string, int> variantCodeCounts = parsed
+            .Where(item => item.Variant is not null && variantFamilies.ContainsKey(item.Variant.Family))
+            .GroupBy(item => item.Variant!.Code, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
+        if (variantFamilies.Count == 1)
+        {
+            bool everyCodeIsSingleMesh = variantCodes.All(code =>
+                variantCodeCounts.TryGetValue(code, out int count) && count == 1);
+            bool everyCodeIsSmallAccessory = variantCodes.All(code =>
+                variantCodeCounts.TryGetValue(code, out int count) && count <= 2);
+
+            if (!everyCodeIsSingleMesh && (!HasSharedNonVariantParts(parsed, variantFamilies) || !everyCodeIsSmallAccessory))
+                return Array.Empty<CompositeCandidateSet>();
+        }
+
+        bool independentSingleMeshVariants = parsed.All(item =>
+            item.Variant is not null && variantFamilies.ContainsKey(item.Variant.Family));
+        bool hasSharedParts = parsed.Any(item =>
+            item.Variant is null || !variantFamilies.ContainsKey(item.Variant.Family));
+
+        var result = new List<CompositeCandidateSet>();
+        foreach (string code in variantCodes)
+        {
+            CompositePartCandidate[] set = parsed
+                .Where(item => item.Variant is null ||
+                               !variantFamilies.ContainsKey(item.Variant.Family) ||
+                               item.Variant.Code.Equals(code, StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.Candidate)
+                .ToArray();
+
+            int keyedCount = set.Count(candidate =>
+            {
+                NonCharacterVariantKey? variant = GetNonCharacterVariantKey(candidate);
+                return variant is not null &&
+                       variantFamilies.ContainsKey(variant.Family) &&
+                       variant.Code.Equals(code, StringComparison.OrdinalIgnoreCase);
+            });
+            if (keyedCount >= 2 ||
+                (hasSharedParts && set.Length >= 2 && keyedCount >= 1) ||
+                (independentSingleMeshVariants && set.Length == 1 && keyedCount == 1))
+                result.Add(new CompositeCandidateSet(code, set));
+        }
+
+        return result.Count > 1 ? result.ToArray() : Array.Empty<CompositeCandidateSet>();
+    }
+
+    private static bool HasSharedNonVariantParts(
+        IEnumerable<(CompositePartCandidate Candidate, NonCharacterVariantKey? Variant)> parsed,
+        Dictionary<string, HashSet<string>> variantFamilies) =>
+        parsed.Any(item => item.Variant is null || !variantFamilies.ContainsKey(item.Variant.Family));
+
+    private static NonCharacterVariantKey? GetNonCharacterVariantKey(CompositePartCandidate candidate)
+    {
+        string name = System.IO.Path.GetFileNameWithoutExtension(candidate.MeshAsset.Name).ToLowerInvariant();
+        string[] segments = name.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        for (int index = 1; index < segments.Length; index++)
+        {
+            string segment = segments[index];
+            int digitEnd = 0;
+            while (digitEnd < segment.Length && char.IsDigit(segment[digitEnd]))
+                digitEnd++;
+
+            if (digitEnd < 2) continue;
+            string suffix = segment[digitEnd..];
+            if (suffix.Length > 1 || suffix.Any(ch => !char.IsLetter(ch))) continue;
+
+            string family = string.Join('_', segments.Take(index));
+            if (family.Length == 0) continue;
+            return new NonCharacterVariantKey(family, segment[..digitEnd]);
+        }
+
+        return null;
+    }
+
+    private static bool IsCharacterConfig(string configPath)
+    {
+        string normalized = NormalizeAssetPath(configPath);
+        return normalized.StartsWith("special/zj_", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/special/zj_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLikelyCharacterWardrobeComposite(IReadOnlyList<CompositePartCandidate> candidates)
+    {
+        if (candidates.Count <= MaximumCharacterFallbackParts) return false;
+
+        // Character CCT files can contain a wardrobe library of mutually exclusive meshes.
+        // Rendering all of them as one composite stacks every outfit and accessory together.
+        return candidates.Count(IsWardrobePartName) >= candidates.Count / 2;
+    }
+
+    private static bool IsWardrobePartName(CompositePartCandidate candidate)
+    {
+        string name = System.IO.Path.GetFileNameWithoutExtension(candidate.MeshAsset.Name);
+        return name.StartsWith("hd_", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("mz_", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("sz_", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("yf_", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("xz_", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("kz_", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("gj_", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("dp_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private CompositePartCandidate[] SelectCharacterBodyCandidates(
+        IReadOnlyList<CompositePartCandidate> candidates,
+        string archivePath,
+        string root,
+        bool includeAccessoryFallback)
+    {
+        HashSet<string> localMaterialNames = GetLocalMaterialNames(archivePath, root);
+        CompositePartCandidate[] result = candidates
+            .Select(candidate => (Candidate: candidate, Slot: GetCharacterSlot(candidate, includeAccessoryFallback)))
+            .Where(item => item.Slot is not null)
+            .GroupBy(item => item.Slot!, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => GetCharacterSlotOrder(group.Key))
+            .Select(group => group
+                .Select(item => item.Candidate)
+                .OrderBy(candidate => ScoreCharacterPart(candidate, localMaterialNames))
+                .ThenBy(candidate => candidate.MeshAsset.Name, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .Take(MaximumCharacterFallbackParts)
+            .ToArray();
+        return result;
+    }
+
+    private static CompositePartCandidate[] SelectDefaultCharacterBodyCandidates(
+        IReadOnlyList<CompositePartCandidate> candidates,
+        HashSet<string> localMaterialNames)
+    {
+        return candidates
+            .Select(candidate => (Candidate: candidate, Slot: GetCharacterSlot(candidate, includeAccessoryFallback: false)))
+            .Where(item => item.Slot is not null)
+            .GroupBy(item => item.Slot!, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => GetCharacterSlotOrder(group.Key))
+            .Select(group => group
+                .Select(item => item.Candidate)
+                .OrderBy(candidate => ScoreDefaultCharacterPart(candidate, localMaterialNames))
+                .ThenBy(candidate => candidate.MeshAsset.Name, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .Take(MaximumCharacterFallbackParts)
+            .ToArray();
+    }
+
+    private static bool IsCompleteCharacterBody(IReadOnlyList<CompositePartCandidate> candidates)
+    {
+        HashSet<string> slots = candidates
+            .Select(candidate => GetCharacterSlot(candidate, includeAccessoryFallback: true))
+            .Where(slot => slot is not null)
+            .Select(slot => slot!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return slots.Contains("hd") &&
+               slots.Contains("st") &&
+               slots.Contains("sz") &&
+               (slots.Contains("kz") || slots.Contains("tui")) &&
+               slots.Contains("xz") &&
+               (slots.Contains("gl") || slots.Contains("gla")) &&
+               (slots.Contains("gr") || slots.Contains("gra"));
+    }
+
+    private static CompositePartCandidate[] FillMissingCharacterBodySlots(
+        IReadOnlyList<CompositePartCandidate> primary,
+        IReadOnlyList<CompositePartCandidate> fallback,
+        HashSet<string> localMaterialNames,
+        bool preferDefaultBase = false)
+    {
+        var selectedBySlot = primary
+            .Select(candidate => (Candidate: candidate, Slot: GetCharacterSlot(candidate, includeAccessoryFallback: true)))
+            .Where(item => item.Slot is not null)
+            .GroupBy(item => item.Slot!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .Select(item => item.Candidate)
+                    .OrderBy(candidate => preferDefaultBase
+                        ? ScoreDefaultCharacterPart(candidate, localMaterialNames)
+                        : ScoreCharacterPart(candidate, localMaterialNames))
+                    .ThenBy(candidate => candidate.MeshAsset.Name, StringComparer.OrdinalIgnoreCase)
+                    .First(),
+                StringComparer.OrdinalIgnoreCase);
+
+        if (preferDefaultBase && selectedBySlot.ContainsKey("kz"))
+            selectedBySlot.Remove("tui");
+
+        string? preferredStyleCode = preferDefaultBase
+            ? null
+            : GetDominantCharacterStyleCode(selectedBySlot.Values);
+
+        foreach (IGrouping<string, CompositePartCandidate> group in fallback
+                     .Select(candidate => (Candidate: candidate, Slot: GetCharacterSlot(candidate, includeAccessoryFallback: false)))
+                     .Where(item => item.Slot is not null)
+                     .GroupBy(item => item.Slot!, item => item.Candidate, StringComparer.OrdinalIgnoreCase))
+        {
+            if (selectedBySlot.ContainsKey(group.Key)) continue;
+            if (group.Key.Equals("tui", StringComparison.OrdinalIgnoreCase) &&
+                selectedBySlot.ContainsKey("kz") &&
+                preferredStyleCode is null)
+            {
+                continue;
+            }
+
+            if (group.Key.Equals("kz", StringComparison.OrdinalIgnoreCase) &&
+                selectedBySlot.ContainsKey("tui"))
+            {
+                continue;
+            }
+
+            CompositePartCandidate[] candidates = group.ToArray();
+            if (group.Key.Equals("tui", StringComparison.OrdinalIgnoreCase) &&
+                preferredStyleCode is not null)
+            {
+                candidates = candidates
+                    .Where(candidate => GetCharacterStyleCode(candidate).Equals(preferredStyleCode, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                if (candidates.Length == 0) continue;
+            }
+
+            selectedBySlot[group.Key] = candidates
+                .OrderBy(candidate => preferDefaultBase
+                    ? ScoreDefaultCharacterPart(candidate, localMaterialNames)
+                    : ScoreCharacterPart(candidate, localMaterialNames, selectedBySlot.Values))
+                .ThenBy(candidate => candidate.MeshAsset.Name, StringComparer.OrdinalIgnoreCase)
+                .First();
+        }
+
+        if (preferredStyleCode is not null)
+        {
+            foreach (IGrouping<string, CompositePartCandidate> group in fallback
+                         .Select(candidate => (Candidate: candidate, Slot: GetCharacterAccessorySlot(candidate)))
+                         .Where(item => item.Slot is not null &&
+                                        GetCharacterStyleCode(item.Candidate).Equals(preferredStyleCode, StringComparison.OrdinalIgnoreCase))
+                         .GroupBy(item => item.Slot!, item => item.Candidate, StringComparer.OrdinalIgnoreCase))
+            {
+                if (selectedBySlot.ContainsKey(group.Key)) continue;
+                selectedBySlot[group.Key] = group
+                    .OrderBy(candidate => ScoreCharacterPart(candidate, localMaterialNames, selectedBySlot.Values))
+                    .ThenBy(candidate => candidate.MeshAsset.Name, StringComparer.OrdinalIgnoreCase)
+                    .First();
+            }
+        }
+        else
+        {
+            AddSameStyleAccessorySlot(selectedBySlot, fallback, localMaterialNames, "yd", "001");
+        }
+
+        return selectedBySlot
+            .OrderBy(pair => GetCharacterSlotOrder(pair.Key))
+            .ThenBy(pair => pair.Value.MeshAsset.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => pair.Value)
+            .Take(MaximumCharacterFallbackParts)
+            .ToArray();
+    }
+
+    private static void AddSameStyleAccessorySlot(
+        Dictionary<string, CompositePartCandidate> selectedBySlot,
+        IReadOnlyList<CompositePartCandidate> fallback,
+        HashSet<string> localMaterialNames,
+        string slot,
+        string styleCode)
+    {
+        if (selectedBySlot.ContainsKey(slot)) return;
+
+        CompositePartCandidate? candidate = fallback
+            .Where(candidate =>
+                string.Equals(GetCharacterAccessorySlot(candidate), slot, StringComparison.OrdinalIgnoreCase) &&
+                GetCharacterStyleCode(candidate).Equals(styleCode, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(candidate => ScoreCharacterPart(candidate, localMaterialNames, selectedBySlot.Values))
+            .ThenBy(candidate => candidate.MeshAsset.Name, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+
+        if (candidate is not null)
+            selectedBySlot[slot] = candidate;
+    }
+
+    private static string? GetCharacterSlot(CompositePartCandidate candidate, bool includeAccessoryFallback)
+    {
+        string name = System.IO.Path.GetFileNameWithoutExtension(candidate.MeshAsset.Name).ToLowerInvariant();
+        if (name.StartsWith("hd_")) return "hd";
+        if (name.StartsWith("mz_")) return "mz";
+        if (name.StartsWith("st_")) return "st";
+        if (name.StartsWith("sz_")) return "sz";
+        if (name.StartsWith("tui_")) return "tui";
+        if (name.StartsWith("xz_")) return "xz";
+        if (name.StartsWith("kz_")) return "kz";
+        if (name.StartsWith("gl_")) return "gl";
+        if (name.StartsWith("gla_")) return "gla";
+        if (name.StartsWith("gr_")) return "gr";
+        if (name.StartsWith("gra_")) return "gra";
+
+        if (!includeAccessoryFallback) return null;
+        int marker = name.IndexOf('_');
+        if (marker <= 0) return null;
+        string prefix = name[..marker];
+        return prefix is "gj" or "mj" or "dp" or "tf" or "qz" or "xw" or "yd" or "sy" or "gb"
+            ? prefix
+            : null;
+    }
+
+    private static string? GetCharacterAccessorySlot(CompositePartCandidate candidate)
+    {
+        string name = System.IO.Path.GetFileNameWithoutExtension(candidate.MeshAsset.Name).ToLowerInvariant();
+        int marker = name.IndexOf('_');
+        if (marker <= 0) return null;
+        string prefix = name[..marker];
+        return prefix is "qz" or "yd" or "xw" or "sy" ? prefix : null;
+    }
+
+    private static int GetCharacterSlotOrder(string slot) => slot switch
+    {
+        "hd" => 0,
+        "mz" => 1,
+        "st" => 2,
+        "sz" => 3,
+        "qz" => 4,
+        "yd" => 5,
+        "xw" => 6,
+        "sy" => 7,
+        "tui" => 8,
+        "kz" => 9,
+        "xz" => 10,
+        "gl" => 11,
+        "gla" => 12,
+        "gr" => 13,
+        "gra" => 14,
+        _ => 20
+    };
+
+    private static int ScoreCharacterPart(
+        CompositePartCandidate candidate,
+        HashSet<string> localMaterialNames,
+        IEnumerable<CompositePartCandidate>? preferredStyleSource = null)
+    {
+        string meshName = System.IO.Path.GetFileNameWithoutExtension(candidate.MeshAsset.Name).ToLowerInvariant();
+        string material = candidate.MaterialName;
+        int score = MaterialMatchesLocal(localMaterialNames, material) ? 0 : 100;
+        string styleCode = GetCharacterStyleCode(candidate);
+        string? preferredStyleCode = preferredStyleSource is null
+            ? null
+            : GetDominantCharacterStyleCode(preferredStyleSource);
+        if (preferredStyleCode is not null)
+            score += styleCode.Equals(preferredStyleCode, StringComparison.OrdinalIgnoreCase) ? -40 : 40;
+        if (material.StartsWith("zj_zj", StringComparison.OrdinalIgnoreCase)) score -= 10;
+        if (meshName.EndsWith("_001", StringComparison.OrdinalIgnoreCase)) score -= 5;
+        if (meshName.Contains("_993", StringComparison.OrdinalIgnoreCase) ||
+            meshName.Contains("_983", StringComparison.OrdinalIgnoreCase) ||
+            meshName.Contains("_996", StringComparison.OrdinalIgnoreCase))
+            score += 10;
+        return score;
+    }
+
+    private static int ScoreDefaultCharacterPart(
+        CompositePartCandidate candidate,
+        HashSet<string> localMaterialNames)
+    {
+        string meshName = System.IO.Path.GetFileNameWithoutExtension(candidate.MeshAsset.Name).ToLowerInvariant();
+        string material = candidate.MaterialName;
+        string styleCode = GetCharacterStyleCode(candidate);
+        int score = 0;
+
+        if (styleCode.Equals("001", StringComparison.OrdinalIgnoreCase)) score -= 220;
+        else if (styleCode.Length > 0) score += 35;
+
+        if (material.StartsWith("zj_zj", StringComparison.OrdinalIgnoreCase)) score -= 45;
+        else if (material.StartsWith("c_yd101", StringComparison.OrdinalIgnoreCase)) score -= 20;
+        else if (MaterialMatchesLocal(localMaterialNames, material)) score -= 5;
+
+        if (LooksLikeNumberedWardrobeMaterial(material)) score += 70;
+
+        if (meshName.Contains("_983", StringComparison.OrdinalIgnoreCase) ||
+            meshName.Contains("_987", StringComparison.OrdinalIgnoreCase) ||
+            meshName.Contains("_993", StringComparison.OrdinalIgnoreCase) ||
+            meshName.Contains("_996", StringComparison.OrdinalIgnoreCase))
+            score += 120;
+
+        return score;
+    }
+
+    private static bool LooksLikeNumberedWardrobeMaterial(string materialName)
+    {
+        string material = materialName.ToLowerInvariant();
+        if (material.StartsWith("c_yd101", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        foreach (string marker in new[] { "yf", "st", "sz", "xz", "kz", "gb", "qz", "yd", "xw", "sy" })
+        {
+            int searchFrom = 0;
+            while (searchFrom < material.Length)
+            {
+                int index = material.IndexOf(marker, searchFrom, StringComparison.Ordinal);
+                if (index < 0) break;
+                int digitStart = index + marker.Length;
+                int digitCount = 0;
+                while (digitStart + digitCount < material.Length &&
+                       char.IsDigit(material[digitStart + digitCount]))
+                    digitCount++;
+                if (digitCount >= 3) return true;
+                searchFrom = digitStart + Math.Max(1, digitCount);
+            }
+        }
+
+        return false;
+    }
+
+    private static string GetCharacterStyleCode(CompositePartCandidate candidate)
+    {
+        string name = System.IO.Path.GetFileNameWithoutExtension(candidate.MeshAsset.Name);
+        int marker = name.LastIndexOf('_');
+        if (marker < 0 || marker == name.Length - 1) return string.Empty;
+        string suffix = name[(marker + 1)..];
+        int end = 0;
+        while (end < suffix.Length && char.IsDigit(suffix[end])) end++;
+        return end == 0 ? string.Empty : suffix[..end];
+    }
+
+    private static string? GetDominantCharacterStyleCode(IEnumerable<CompositePartCandidate> candidates) =>
+        candidates
+            .Select(GetCharacterStyleCode)
+            .Where(code => code.Length > 0 && !code.Equals("001", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(code => code, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Key)
+            .FirstOrDefault();
+
+    private CompositePartCandidate[] SelectLocalMaterialCandidates(
+        IReadOnlyList<CompositePartCandidate> candidates,
+        string archivePath,
+        string root)
+    {
+        HashSet<string> localMaterialNames = GetLocalMaterialNames(archivePath, root);
+        if (localMaterialNames.Count == 0) return Array.Empty<CompositePartCandidate>();
+
+        return candidates
+            .Where(candidate => MaterialMatchesLocal(localMaterialNames, candidate.MaterialName))
+            .GroupBy(candidate => candidate.MeshAsset.DisplayPath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
     }
 
     private CompositePartCandidate[] CollapseMaterialVariants(
@@ -233,19 +787,51 @@ public sealed class ModelTextureResolver
         string archivePath,
         string root)
     {
-        HashSet<string> localMaterialNames = _workspace.Assets
+        HashSet<string> localMaterialNames = GetLocalMaterialNames(archivePath, root);
+
+        return candidates
+            .GroupBy(candidate => candidate.MeshAsset.DisplayPath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => localMaterialNames.Count == 0
+                ? group.First()
+                : group.FirstOrDefault(candidate => MaterialMatchesLocal(localMaterialNames, candidate.MaterialName)) ?? group.First())
+            .ToArray();
+    }
+
+    private HashSet<string> GetLocalMaterialNames(string archivePath, string root) =>
+        _workspace.Assets
             .Where(asset => string.Equals(asset.ArchivePath, archivePath, StringComparison.OrdinalIgnoreCase) &&
                             asset.Extension.Equals(".dds", StringComparison.OrdinalIgnoreCase) &&
                             IsUnderRoot(asset.Entry.Path, root))
             .Select(asset => System.IO.Path.GetFileNameWithoutExtension(asset.Name))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        if (localMaterialNames.Count == 0) return candidates.ToArray();
+    private static bool MaterialMatchesLocal(HashSet<string> localMaterialNames, string materialName)
+    {
+        if (localMaterialNames.Contains(materialName)) return true;
 
-        return candidates
-            .GroupBy(candidate => candidate.MeshAsset.DisplayPath, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.FirstOrDefault(candidate => localMaterialNames.Contains(candidate.MaterialName)) ?? group.First())
-            .ToArray();
+        string alias = TrimMaterialVariantSuffix(materialName);
+        return !alias.Equals(materialName, StringComparison.OrdinalIgnoreCase) &&
+               localMaterialNames.Contains(alias);
+    }
+
+    private static bool MaterialNameMatches(string? actualName, string requestedName)
+    {
+        if (string.IsNullOrWhiteSpace(actualName)) return false;
+        if (actualName.Equals(requestedName, StringComparison.OrdinalIgnoreCase)) return true;
+
+        string requestedAlias = TrimMaterialVariantSuffix(requestedName);
+        return !requestedAlias.Equals(requestedName, StringComparison.OrdinalIgnoreCase) &&
+               actualName.Equals(requestedAlias, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string TrimMaterialVariantSuffix(string materialName)
+    {
+        string trimmed = materialName.Trim();
+        int index = trimmed.Length - 1;
+        while (index >= 0 && char.IsDigit(trimmed[index])) index--;
+        if (index < trimmed.Length - 1 && index >= 0 && trimmed[index] == 'h')
+            return trimmed[..(index + 1)];
+        return trimmed;
     }
 
     private IReadOnlyList<AssetEntry> GetTextureCandidateConfigs(AssetEntry model)
@@ -283,10 +869,9 @@ public sealed class ModelTextureResolver
                 .Where(element => element.Name.LocalName.Equals("Material", StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(materialName))
             {
-                materials = materials.Where(element => string.Equals(
+                materials = materials.Where(element => MaterialNameMatches(
                     element.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName.Equals("Name", StringComparison.OrdinalIgnoreCase))?.Value,
-                    materialName,
-                    StringComparison.OrdinalIgnoreCase));
+                    materialName));
             }
 
             foreach (XElement material in materials)
